@@ -38,7 +38,14 @@ export default function GeneratePage() {
   const [info, setInfo] = useState("");
 
   useEffect(() => {
-    fetch("/api/exams").then((r) => r.json()).then((j) => setExams(j.items ?? []));
+    fetch("/api/exams")
+      .then((r) => r.json())
+      .then((j) => {
+        setExams(j.items ?? []);
+        // 从考情页点「用这个考试生成」过来时，自动选上
+        const id = new URLSearchParams(window.location.search).get("exam");
+        if (id && (j.items ?? []).some((e: Exam) => e.id === id)) setExamId(id);
+      });
     fetch("/api/notes").then((r) => r.json()).then((j) => setNotes((j.items ?? []).filter((n: NoteItem) => n.element_count > 0)));
   }, []);
 

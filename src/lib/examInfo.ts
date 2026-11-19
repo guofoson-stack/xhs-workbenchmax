@@ -182,3 +182,38 @@ export function targetScenes(info: ExamInfo | null, today = todayStr()): { scene
   return general;
 }
 
+
+/* ================= 考情列表用：阶段分组 + 下一个节点 ================= */
+
+export type Phase = "进行中" | "7天内" | "待开始" | "已结束" | "待公布";
+
+export interface ExamProgress {
+  phase: Phase;
+  label: string; // 列表里显示的阶段文字
+  next?: TimelineRow; // 下一个未开始的节点
+  daysToNext?: number;
+  ongoing: TimelineRow[];
+}
+
+export function progressOf(info: ExamInfo, today = todayStr()): ExamProgress {
+  const cur = sortTimeline(info.timeline.filter((r) => isCurrent(r.basis)));
+  const dated = cur.filter((r) => r.date);
+  const ongoing = dated.filter((r) => statusOf(r, today) === "进行中");
+  const upcoming = dated.filter((r) => statusOf(r, today) === "未开始");
+  const past = dated.filter((r) => statusOf(r, today) === "已结束");
+  const next = upcoming[0];
+  const daysToNext = next ? days(next.date, today) : undefined;
+
+  if (!dated.length) return { phase: "待公布", label: "时间待公布", ongoing };
+  if (ongoing.length) {
+    const r = ongoing[0];
+    const left = r.end ? days(r.end, today) : 0;
+    return { phase: "进行中", label: `${r.event}中${r.end ? (left === 0 ? "（今天截止）" : `（还剩${left}天）`) : ""}`, next, daysToNext, ongoing };
+  }
+  if (next && daysToNext !== undefined && daysToNext <= 7) return { phase: "7天内", label: `${daysToNext === 0 ? "今天" : daysToNext + "天后"}${next.event}`, next, daysToNext, ongoing };
+  if (next) return { phase: "待开始", label: past.length ? `${past[past.length - 1].event}已结束` : "待开始", next, daysToNext, ongoing };
+  // 有日期的都过了，但还有没公布时间的环节（比如面试）：流程还没走完
+  const pending = cur.filter((r) => !r.date);
+  if (pending.length) return { phase: "待开始", label: `${past[past.length - 1].event}已结束，${pending[0].event}待公布`, ongoing };
+  return { phase: "已结束", label: `${past[past.length - 1].event}已结束`, ongoing };
+}

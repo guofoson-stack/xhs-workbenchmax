@@ -44,6 +44,7 @@ export interface Exam {
   stage?: string | null;
   sources?: string | null;
   researched_at?: string | null;
+  updated_at?: string | null;
   info?: string | null;
 }
 

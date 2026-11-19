@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ExamInfoEditor, ExamInfoView } from "@/components/ExamInfo";
-import { emptyInfo, parseInfo, type ExamInfo } from "@/lib/examInfo";
+import { emptyInfo, fmtDate, parseInfo, progressOf, todayStr, type ExamInfo, type Phase } from "@/lib/examInfo";
 import { CATEGORIES, type Exam } from "@/lib/types";
 
 const EMPTY_BASE = { name: "", short_name: "", category: "事业单位", product: "" };
+const STALE_DAYS = 14;
 
 /** 旧版只有几段文字的考情，转成结构化格式方便继续编辑 */
 function legacyToInfo(x: Exam): ExamInfo {
@@ -15,26 +16,97 @@ function legacyToInfo(x: Exam): ExamInfo {
   if (x.stage) info.stageHint = x.stage;
   return info;
 }
-
 const infoOf = (x: Exam) => parseInfo(x.info) ?? legacyToInfo(x);
+
+const PHASE_STYLE: Record<Phase, string> = {
+  进行中: "bg-green-100 text-green-800",
+  "7天内": "bg-red-100 text-red-700",
+  待开始: "bg-blue-50 text-blue-700",
+  待公布: "bg-amber-50 text-amber-700",
+  已结束: "bg-gray-100 text-gray-500",
+};
+const PHASE_ORDER: Phase[] = ["进行中", "7天内", "待开始", "待公布", "已结束"];
+
+const daysSince = (d?: string | null) => (d ? Math.floor((Date.now() - Date.parse(d.replace(" ", "T"))) / 86400000) : Infinity);
+
+type Drawer = { mode: "view"; id: string } | { mode: "edit"; id?: string } | { mode: "preview" } | null;
 
 export default function ExamsClient() {
   const [items, setItems] = useState<Exam[]>([]);
-  const [base, setBase] = useState(EMPTY_BASE);
-  const [info, setInfo] = useState<ExamInfo>(emptyInfo());
-  const [researched, setResearched] = useState(false);
-  const [mode, setMode] = useState<"none" | "preview" | "edit">("none");
-  const [msg, setMsg] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  // 筛选
+  const [kw, setKw] = useState("");
+  const [cat, setCat] = useState("");
+  const [phase, setPhase] = useState<Phase | "" | "stale">("");
+  const [showDone, setShowDone] = useState(false);
+  const [sort, setSort] = useState<"next" | "updated" | "name">("next");
+  // AI 搜索
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
+  // 侧边栏
+  const [drawer, setDrawer] = useState<Drawer>(null);
+  const [base, setBase] = useState(EMPTY_BASE);
+  const [info, setInfo] = useState<ExamInfo>(emptyInfo());
+  const [researched, setResearched] = useState(false);
+  const [msg, setMsg] = useState("");
 
-  const load = () => fetch("/api/exams").then((r) => r.json()).then((j) => setItems(j.items ?? []));
+  const load = () =>
+    fetch("/api/exams")
+      .then((r) => r.json())
+      .then((j) => {
+        setItems(j.items ?? []);
+        setLoaded(true);
+      });
   useEffect(() => {
     load();
   }, []);
 
-  async function runResearch(name = q) {
+  const today = todayStr();
+  const rows = useMemo(
+    () =>
+      items.map((x) => {
+        const xi = infoOf(x);
+        const p = progressOf(xi, today);
+        const updated = x.researched_at || x.updated_at || null;
+        return { x, info: xi, p, updated, stale: daysSince(updated as string) > STALE_DAYS };
+      }),
+    [items, today]
+  );
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { stale: 0 };
+    for (const r of rows) {
+      c[r.p.phase] = (c[r.p.phase] ?? 0) + 1;
+      if (r.stale && r.p.phase !== "已结束") c.stale++;
+    }
+    return c;
+  }, [rows]);
+
+  const visible = useMemo(() => {
+    const k = kw.trim().toLowerCase();
+    let list = rows.filter((r) => {
+      if (k && !`${r.x.name} ${r.x.short_name ?? ""}`.toLowerCase().includes(k)) return false;
+      if (cat && r.x.category !== cat) return false;
+      if (phase === "stale") return r.stale && r.p.phase !== "已结束";
+      if (phase) return r.p.phase === phase;
+      if (!showDone && r.p.phase === "已结束") return false;
+      return true;
+    });
+    list = [...list].sort((a, b) => {
+      if (sort === "name") return a.x.name.localeCompare(b.x.name, "zh");
+      if (sort === "updated") return String(b.updated ?? "").localeCompare(String(a.updated ?? ""));
+      const pa = PHASE_ORDER.indexOf(a.p.phase);
+      const pb = PHASE_ORDER.indexOf(b.p.phase);
+      if (pa !== pb) return pa - pb;
+      return (a.p.daysToNext ?? 9999) - (b.p.daysToNext ?? 9999);
+    });
+    return list;
+  }, [rows, kw, cat, phase, showDone, sort]);
+
+  /* ---------- 动作 ---------- */
+
+  async function runResearch(name = q, keepProduct = "") {
     if (!name.trim()) return;
     setBusy(true);
     setStatus("🔍 正在联网搜索公告、大纲、时间节点，并读取公告全文，大约 30–60 秒…");
@@ -43,18 +115,11 @@ export default function ExamsClient() {
     setBusy(false);
     if (!r.ok) return setStatus("❌ " + (j.error ?? "搜索失败"));
     const res = j.result;
-    setBase((b) => ({
-      name: res.name,
-      short_name: res.short_name,
-      category: CATEGORIES.includes(res.category) ? res.category : "其他",
-      product: b.product,
-    }));
+    setBase({ name: res.name, short_name: res.short_name, category: CATEGORIES.includes(res.category) ? res.category : "其他", product: keepProduct });
     setInfo(res.info);
     setResearched(true);
-    setMode("preview");
-    setStatus(
-      `✅ 整理好了：参考 ${res.searched} 篇网页（其中 ${res.fetched} 篇读了公告全文），可信度「${res.info.confidence || "未知"}」。检查下面的内容，没问题点保存。`
-    );
+    setDrawer({ mode: "preview" });
+    setStatus(`✅ 整理好了：参考 ${res.searched} 篇网页（${res.fetched} 篇读了公告全文），可信度「${res.info.confidence || "未知"}」，在右侧检查后保存。`);
   }
 
   async function save() {
@@ -65,179 +130,292 @@ export default function ExamsClient() {
       body: JSON.stringify({ ...base, info: clean, sources: clean.sources ?? [], researched }),
     });
     const j = await r.json();
-    if (!r.ok) return setMsg(j.error);
-    setMsg("✅ 已保存");
-    setTimeout(() => setMsg(""), 2000);
-    reset();
-    load();
-  }
-
-  function reset() {
-    setBase(EMPTY_BASE);
-    setInfo(emptyInfo());
-    setResearched(false);
+    if (!r.ok) return setMsg("❌ " + j.error);
+    await load();
+    setMsg("");
     setStatus("");
     setQ("");
-    setMode("none");
-  }
-
-  function edit(x: Exam) {
-    setBase({ name: x.name, short_name: x.short_name ?? "", category: x.category, product: x.product ?? "" });
-    setInfo(infoOf(x));
     setResearched(false);
-    setStatus(`正在编辑「${x.name}」`);
-    setMode("edit");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setDrawer(j.item?.id ? { mode: "view", id: j.item.id } : null);
   }
 
-  async function refresh(x: Exam) {
-    setQ(x.name);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-    await runResearch(x.name);
-    setBase((b) => ({ ...b, product: x.product ?? "" }));
+  function openEdit(x?: Exam) {
+    if (x) {
+      setBase({ name: x.name, short_name: x.short_name ?? "", category: x.category, product: x.product ?? "" });
+      setInfo(infoOf(x));
+    } else {
+      setBase(EMPTY_BASE);
+      setInfo(emptyInfo());
+    }
+    setResearched(false);
+    setMsg("");
+    setDrawer({ mode: "edit", id: x?.id });
   }
 
   async function remove(id: string) {
     if (!confirm("删除这条考情？")) return;
     await fetch(`/api/exams/${id}`, { method: "DELETE" });
+    setDrawer(null);
     load();
   }
 
   const setB = (k: keyof typeof EMPTY_BASE) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setBase({ ...base, [k]: e.target.value });
 
-  return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-      <section className="space-y-4">
-        <div className="card space-y-3">
-          <div className="h1">考情</div>
-          <div className="rounded-xl bg-brand-soft p-4">
-            <label className="mb-2 block text-sm font-bold text-brand">🔍 AI 搜索考情</label>
-            <div className="flex gap-2">
-              <input className="input" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && runResearch()} placeholder="如：中国地震局 2027 事业单位招聘" />
-              <button className="btn shrink-0" onClick={() => runResearch()} disabled={busy || !q.trim()}>
-                {busy ? "搜索中…" : "搜索整理"}
-              </button>
-            </div>
-            <p className="mt-2 text-xs text-muted">{status || "带上年份和单位全称更准。整理好会按「时间线 / 科目 / 关键信息」分开，本届和往年分开标注，当前阶段按今天自动判断。"}</p>
-          </div>
-        </div>
+  const current = drawer?.mode === "view" ? rows.find((r) => r.x.id === drawer.id) : null;
 
-        {mode === "none" && (
-          <button className="card w-full text-left text-sm text-muted hover:border-brand" onClick={() => setMode("edit")}>
-            ✍️ 不用搜索，<b className="text-ink">手动录入</b>一个考情
+  /* ---------- 页面 ---------- */
+
+  return (
+    <div className="space-y-4">
+      {/* 顶部：标题 + AI 搜索 + 手动录入 */}
+      <div className="card space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="h1 mr-2">考情 {loaded && <span className="text-base font-normal text-muted">（{items.length}）</span>}</div>
+          <div className="flex min-w-72 flex-1 gap-2">
+            <input
+              className="input"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && runResearch()}
+              placeholder="🔍 AI 搜索考情：输入考试名，如「中国地震局 2027 事业单位招聘」"
+            />
+            <button className="btn shrink-0" onClick={() => runResearch()} disabled={busy || !q.trim()}>
+              {busy ? "搜索中…" : "搜索整理"}
+            </button>
+          </div>
+          <button className="btn-ghost" onClick={() => openEdit()}>
+            ＋ 手动录入
+          </button>
+        </div>
+        {status && <div className="text-xs text-muted">{status}</div>}
+
+        {/* 统计：点一下直接筛 */}
+        <div className="flex flex-wrap gap-2 text-sm">
+          {(
+            [
+              ["进行中", "报名等进行中"],
+              ["7天内", "7 天内有节点"],
+              ["待开始", "待开始"],
+              ["待公布", "时间待公布"],
+              ["已结束", "已结束"],
+            ] as [Phase, string][]
+          ).map(([ph, label]) => (
+            <button
+              key={ph}
+              onClick={() => setPhase(phase === ph ? "" : ph)}
+              className={`rounded-full px-3 py-1 ${phase === ph ? "ring-2 ring-brand" : ""} ${PHASE_STYLE[ph]}`}
+            >
+              {label} <b>{counts[ph] ?? 0}</b>
+            </button>
+          ))}
+          <button onClick={() => setPhase(phase === "stale" ? "" : "stale")} className={`rounded-full bg-white px-3 py-1 ring-1 ring-line ${phase === "stale" ? "ring-2 ring-brand" : ""}`}>
+            超过 {STALE_DAYS} 天没更新 <b>{counts.stale}</b>
+          </button>
+        </div>
+      </div>
+
+      {/* 筛选条 */}
+      <div className="flex flex-wrap items-center gap-2">
+        <input className="input w-56" value={kw} onChange={(e) => setKw(e.target.value)} placeholder="搜考试名称" />
+        <select className="input w-auto" value={cat} onChange={(e) => setCat(e.target.value)}>
+          <option value="">全部类别</option>
+          {CATEGORIES.map((c) => (
+            <option key={c}>{c}</option>
+          ))}
+        </select>
+        <select className="input w-auto" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
+          <option value="next">按下个节点（最紧急在前）</option>
+          <option value="updated">按最近更新</option>
+          <option value="name">按名称</option>
+        </select>
+        {!phase && (
+          <label className="flex items-center gap-1 text-sm text-muted">
+            <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> 显示已结束
+          </label>
+        )}
+        {(phase || kw || cat) && (
+          <button className="text-sm text-muted underline" onClick={() => (setPhase(""), setKw(""), setCat(""))}>
+            清除筛选
           </button>
         )}
+        <span className="ml-auto text-xs text-muted">显示 {visible.length} 个</span>
+      </div>
 
-        {mode !== "none" && (
-          <div className="card space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="font-bold">{mode === "preview" ? "AI 整理结果（检查后保存）" : researched ? "修改 AI 整理结果" : "编辑考情"}</div>
-              <div className="flex gap-3 text-xs">
-                {mode === "preview" ? (
-                  <button className="text-brand" onClick={() => setMode("edit")}>
+      {/* 列表 */}
+      <div className="overflow-hidden rounded-xl border border-line bg-white">
+        <div className="hidden grid-cols-[minmax(0,2.4fr)_minmax(0,1.3fr)_minmax(0,1.6fr)_110px] gap-3 border-b border-line bg-paper px-4 py-2 text-xs text-muted md:grid">
+          <span>考试</span>
+          <span>当前阶段</span>
+          <span>下一个节点</span>
+          <span>更新</span>
+        </div>
+        {visible.map(({ x, info: xi, p, updated, stale }) => (
+          <button
+            key={x.id}
+            onClick={() => setDrawer({ mode: "view", id: x.id })}
+            className={`grid w-full grid-cols-1 gap-1 border-b border-line px-4 py-2 text-left text-sm last:border-0 hover:bg-brand-soft/40 md:grid-cols-[minmax(0,2.4fr)_minmax(0,1.3fr)_minmax(0,1.6fr)_110px] md:items-center md:gap-3 ${
+              drawer && "id" in drawer && drawer.id === x.id ? "bg-brand-soft/60" : ""
+            } ${p.phase === "已结束" ? "opacity-60" : ""}`}
+          >
+            <span className="min-w-0">
+              <span className="block truncate font-medium">
+                {x.short_name && !x.name.includes(x.short_name) ? `${x.short_name}｜` : ""}
+                {x.name}
+              </span>
+              <span className="text-xs text-muted">
+                {x.category}
+                {xi.cycle ? ` · ${xi.cycle}` : ""}
+                {xi.confidence ? ` · 可信度${xi.confidence}` : ""}
+              </span>
+            </span>
+            <span>
+              <span className={`rounded px-2 py-0.5 text-xs ${PHASE_STYLE[p.phase]}`}>{p.label}</span>
+            </span>
+            <span className="min-w-0 truncate text-muted">
+              {p.next ? (
+                <>
+                  <b className="text-ink">{fmtDate(p.next.date)}</b> {p.next.event}
+                  <span className={`ml-1 text-xs ${p.daysToNext! <= 7 ? "text-red-600" : ""}`}>
+                    {p.daysToNext === 0 ? "（今天）" : `（还有 ${p.daysToNext} 天）`}
+                  </span>
+                </>
+              ) : (
+                "—"
+              )}
+            </span>
+            <span className={`text-xs ${stale && p.phase !== "已结束" ? "text-amber-700" : "text-muted"}`}>
+              {updated ? String(updated).slice(5, 10).replace("-", "/") : "—"}
+              {stale && p.phase !== "已结束" ? " 该更新了" : ""}
+            </span>
+          </button>
+        ))}
+        {loaded && !visible.length && (
+          <div className="px-4 py-8 text-center text-sm text-muted">{items.length ? "没有符合筛选条件的考情" : "还没有考情，在上面输入考试名点「搜索整理」试试"}</div>
+        )}
+      </div>
+
+      {/* 右侧抽屉 */}
+      {drawer && (
+        <>
+          <div className="fixed inset-0 z-20 bg-black/20" onClick={() => setDrawer(null)} />
+          <aside className="fixed right-0 top-0 z-30 flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-line px-5 py-3">
+              <div className="font-bold">
+                {drawer.mode === "view" ? "考情详情" : drawer.mode === "preview" ? "AI 整理结果（检查后保存）" : drawer.id ? "编辑考情" : "手动录入考情"}
+              </div>
+              <button className="text-xl leading-none text-muted hover:text-ink" onClick={() => setDrawer(null)} title="关闭">
+                ×
+              </button>
+            </div>
+
+            <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+              {drawer.mode === "view" && current && (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-lg font-bold">{current.x.name}</div>
+                      <div className="mt-1 flex flex-wrap gap-1.5 text-xs">
+                        <span className="chip">{current.x.category}</span>
+                        {current.info.cycle && <span className="chip !bg-gray-100 !text-gray-600">{current.info.cycle}</span>}
+                        {current.info.confidence && <span className="chip !bg-gray-100 !text-gray-600">可信度 {current.info.confidence}</span>}
+                        {current.x.researched_at && <span className="text-muted">AI 整理于 {current.x.researched_at.slice(0, 10)}</span>}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                      <a className="btn" href={`/generate?exam=${current.x.id}`}>
+                        ✍️ 用这个考试生成
+                      </a>
+                      <button className="btn-ghost" onClick={() => openEdit(current.x)}>
+                        编辑
+                      </button>
+                      <button className="btn-ghost" onClick={() => runResearch(current.x.name, current.x.product ?? "")} disabled={busy} title="重新联网搜索最新进展">
+                        {busy ? "更新中…" : "🔄 更新"}
+                      </button>
+                      <button className="btn-ghost hover:text-brand" onClick={() => remove(current.x.id)}>
+                        删除
+                      </button>
+                    </div>
+                  </div>
+                  {busy && <div className="text-xs text-muted">{status}</div>}
+                  <ExamInfoView info={current.info} />
+                  {current.x.product && (
+                    <div className="text-sm">
+                      <span className="text-muted">我们的资料：</span>
+                      {current.x.product}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {drawer.mode === "preview" && (
+                <>
+                  <div>
+                    <div className="text-lg font-bold">{base.name}</div>
+                    <div className="mt-1 flex flex-wrap gap-1.5 text-xs">
+                      <span className="chip">{base.category}</span>
+                      {info.cycle && <span className="chip !bg-gray-100 !text-gray-600">{info.cycle}</span>}
+                      {info.confidence && <span className="chip !bg-gray-100 !text-gray-600">可信度 {info.confidence}</span>}
+                    </div>
+                  </div>
+                  <ExamInfoView info={info} />
+                </>
+              )}
+
+              {drawer.mode === "edit" && (
+                <>
+                  <div className="grid grid-cols-2 gap-2 md:grid-cols-[2fr_1fr_1fr]">
+                    <div className="col-span-2 md:col-span-1">
+                      <label className="label">考试全称 *</label>
+                      <input className="input" value={base.name} onChange={setB("name")} placeholder="中国地震局 2027 年度事业单位公开招聘" />
+                    </div>
+                    <div>
+                      <label className="label">简称</label>
+                      <input className="input" value={base.short_name} onChange={setB("short_name")} placeholder="地震局" />
+                    </div>
+                    <div>
+                      <label className="label">类别</label>
+                      <select className="input" value={base.category} onChange={setB("category")}>
+                        {CATEGORIES.map((c) => (
+                          <option key={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <ExamInfoEditor info={info} onChange={setInfo} />
+                </>
+              )}
+
+              {(drawer.mode === "edit" || drawer.mode === "preview") && (
+                <div>
+                  <label className="label">我们对应的资料（生成笔记时会用到）</label>
+                  <textarea className="input h-14" value={base.product} onChange={setB("product")} placeholder="如：真题 5 套 + 地震局专项常识 + 面试题本" />
+                </div>
+              )}
+            </div>
+
+            {(drawer.mode === "edit" || drawer.mode === "preview") && (
+              <div className="flex items-center gap-2 border-t border-line px-5 py-3">
+                <button className="btn flex-1" onClick={save} disabled={!base.name}>
+                  保存
+                </button>
+                {drawer.mode === "preview" ? (
+                  <button className="btn-ghost" onClick={() => setDrawer({ mode: "edit" })}>
                     ✏️ 修改
                   </button>
                 ) : (
                   researched && (
-                    <button className="text-brand" onClick={() => setMode("preview")}>
+                    <button className="btn-ghost" onClick={() => setDrawer({ mode: "preview" })}>
                       👀 看整理效果
                     </button>
                   )
                 )}
-                <button className="text-muted hover:text-brand" onClick={reset}>
-                  取消
-                </button>
+                {msg && <span className="text-sm">{msg}</span>}
               </div>
-            </div>
-
-            {mode === "preview" ? (
-              <>
-                <div>
-                  <div className="font-bold">{base.name}</div>
-                  <div className="mt-1 flex flex-wrap gap-1.5 text-xs">
-                    <span className="chip">{base.category}</span>
-                    {info.cycle && <span className="chip !bg-gray-100 !text-gray-600">{info.cycle}</span>}
-                    {info.confidence && <span className="chip !bg-gray-100 !text-gray-600">可信度 {info.confidence}</span>}
-                  </div>
-                </div>
-                <ExamInfoView info={info} />
-              </>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-2 md:grid-cols-[2fr_1fr_1fr]">
-                  <div className="col-span-2 md:col-span-1">
-                    <label className="label">考试全称 *</label>
-                    <input className="input" value={base.name} onChange={setB("name")} placeholder="中国地震局 2027 年度事业单位公开招聘" />
-                  </div>
-                  <div>
-                    <label className="label">简称</label>
-                    <input className="input" value={base.short_name} onChange={setB("short_name")} placeholder="地震局" />
-                  </div>
-                  <div>
-                    <label className="label">类别</label>
-                    <select className="input" value={base.category} onChange={setB("category")}>
-                      {CATEGORIES.map((c) => (
-                        <option key={c}>{c}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <ExamInfoEditor info={info} onChange={setInfo} />
-              </>
             )}
-
-            <div>
-              <label className="label">我们对应的资料（生成笔记时会用到）</label>
-              <textarea className="input h-14" value={base.product} onChange={setB("product")} placeholder="如：真题 5 套 + 地震局专项常识 + 面试题本" />
-            </div>
-            <button className="btn w-full" onClick={save} disabled={!base.name}>
-              保存
-            </button>
-          </div>
-        )}
-        {msg && <div className="card text-sm">{msg}</div>}
-      </section>
-
-      <section className="space-y-3">
-        {items.map((x) => {
-          const xi = infoOf(x);
-          return (
-            <div key={x.id} className="card space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <div className="font-bold">{x.name}</div>
-                  <div className="mt-1 flex flex-wrap gap-1.5 text-xs">
-                    <span className="chip">{x.category}</span>
-                    {xi.cycle && <span className="chip !bg-gray-100 !text-gray-600">{xi.cycle}</span>}
-                    {xi.confidence && <span className="chip !bg-gray-100 !text-gray-600">可信度 {xi.confidence}</span>}
-                    {x.researched_at && <span className="text-muted">AI 整理于 {x.researched_at.slice(0, 10)}</span>}
-                  </div>
-                </div>
-                <div className="flex shrink-0 gap-2 text-xs text-muted">
-                  <button className="hover:text-ink" onClick={() => edit(x)}>
-                    编辑
-                  </button>
-                  <button className="hover:text-ink" onClick={() => refresh(x)} title="重新联网搜索，获取最新进展">
-                    🔄 更新
-                  </button>
-                  <button className="hover:text-brand" onClick={() => remove(x.id)}>
-                    删除
-                  </button>
-                </div>
-              </div>
-              <ExamInfoView info={xi} compact />
-              {x.product && (
-                <div className="text-sm">
-                  <span className="text-muted">我们的资料：</span>
-                  {x.product}
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {!items.length && <div className="card text-sm text-muted">还没有考情。在左边输入考试名，点「搜索整理」试试。</div>}
-      </section>
+          </aside>
+        </>
+      )}
     </div>
   );
 }
