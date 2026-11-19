@@ -40,6 +40,7 @@ export interface Exam {
   stage?: string | null;
   sources?: string | null;
   researched_at?: string | null;
+  info?: string | null;
 }
 
 export interface ResearchSource {
@@ -50,18 +51,6 @@ export interface ResearchSource {
   used_for?: string;
 }
 
-export interface ExamResearch {
-  name: string;
-  short_name: string;
-  category: string;
-  subjects: string;
-  exam_time: string;
-  features: string;
-  stage: string;
-  confidence: string;
-  warnings: string;
-  sources: ResearchSource[];
-}
 
 export type CoverLayout = "bigword" | "list" | "note";
 

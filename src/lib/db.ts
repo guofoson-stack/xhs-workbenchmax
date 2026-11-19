@@ -123,6 +123,7 @@ function migrate(d: Database) {
     stage: "text", // 当前阶段：如「笔试已结束，等出成绩」
     sources: "text", // AI 搜索考情时用到的来源（JSON）
     researched_at: "text",
+    info: "text", // 结构化考情（时间线 / 科目 / 关键信息，JSON）
   };
   for (const [c, t] of Object.entries(add)) if (!cols.has(c)) d.exec(`alter table exams add column ${c} ${t}`);
 }

@@ -15,11 +15,12 @@ export async function POST(req: Request) {
   const existing = get<{ id: string }>("select id from exams where name = ?", name);
   const id = existing?.id ?? newId();
   run(
-    `insert into exams (id,name,short_name,category,subjects,exam_time,features,product,stage,sources,researched_at,updated_at)
-     values (?,?,?,?,?,?,?,?,?,?,?,datetime('now','localtime'))
+    `insert into exams (id,name,short_name,category,subjects,exam_time,features,product,stage,sources,researched_at,info,updated_at)
+     values (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now','localtime'))
      on conflict(name) do update set short_name=excluded.short_name, category=excluded.category, subjects=excluded.subjects,
        exam_time=excluded.exam_time, features=excluded.features, product=excluded.product, stage=excluded.stage,
        sources=coalesce(excluded.sources, exams.sources), researched_at=coalesce(excluded.researched_at, exams.researched_at),
+       info=excluded.info,
        updated_at=excluded.updated_at`,
     id,
     name,
@@ -31,7 +32,8 @@ export async function POST(req: Request) {
     v(b.product),
     v(b.stage),
     Array.isArray(b.sources) && b.sources.length ? JSON.stringify(b.sources) : null,
-    b.researched ? new Date().toLocaleString("sv-SE") : null
+    b.researched ? new Date().toLocaleString("sv-SE") : null,
+    b.info ? JSON.stringify(b.info) : null
   );
   return NextResponse.json({ item: get("select * from exams where id = ?", id) });
 }

@@ -8,7 +8,7 @@ export async function POST(req: Request) {
   try {
     const { name } = await req.json();
     if (!String(name ?? "").trim()) return NextResponse.json({ error: "请输入要搜索的考试名称" }, { status: 400 });
-    return NextResponse.json({ draft: await researchExam(String(name)) });
+    return NextResponse.json({ result: await researchExam(String(name)) });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }
