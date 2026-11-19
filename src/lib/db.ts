@@ -73,6 +73,15 @@ create table if not exists elements (
 create index if not exists elements_type_idx on elements(type);
 create index if not exists elements_note_idx on elements(note_id);
 
+create table if not exists users (
+  id text primary key,
+  name text not null unique,
+  password_hash text not null,
+  role text not null default 'staff' check (role in ('admin','staff')),
+  active integer not null default 1,
+  created_at text not null default (datetime('now','localtime'))
+);
+
 create table if not exists generations (
   id text primary key,
   exam_id text references exams(id) on delete set null,
@@ -116,6 +125,8 @@ select e.*,
        n.exam_name,
        n.account_type,
        n.scene,
+       n.created_by as collector_id,
+       (select name from users u where u.id = n.created_by) as collector,
        n.likes as note_likes,
        n.collects as note_collects,
        coalesce(n.likes,0) + coalesce(n.collects,0) + 2*coalesce(n.comments,0) as heat
@@ -124,8 +135,13 @@ from elements e join notes n on n.id = e.note_id;
 
 /** 旧版数据库补字段（新版本加的列） */
 function migrate(d: Database) {
-  const noteCols = new Set(d.prepare("pragma table_info(notes)").all().map((r) => String(r.name)));
+  const colsOf = (t: string) => new Set(d.prepare(`pragma table_info(${t})`).all().map((r) => String(r.name)));
+  const noteCols = colsOf("notes");
   if (!noteCols.has("scene")) d.exec("alter table notes add column scene text");
+  // 记录是谁做的（旧数据为空，看板里显示「未登记」）
+  for (const t of ["notes", "generations", "exams"]) {
+    if (!colsOf(t).has("created_by")) d.exec(`alter table ${t} add column created_by text`);
+  }
   // 视图每次启动重建，保证带上新字段
   d.exec("drop view if exists element_view;" + ELEMENT_VIEW);
   const cols = new Set(d.prepare("pragma table_info(exams)").all().map((r) => String(r.name)));

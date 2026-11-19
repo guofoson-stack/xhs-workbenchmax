@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
 import { chat } from "@/lib/ai";
 import { readSettings } from "@/lib/config";
+import { errorResponse, requireAdmin } from "@/lib/session";
 import { webSearch } from "@/lib/search";
 
 export const maxDuration = 60;
 
 /** 测试大模型：发一句话，看能不能正常回复；可选再测一次看图 */
 export async function POST(req: Request) {
+  try {
+    await requireAdmin();
+  } catch (e) {
+    return errorResponse(e);
+  }
   const { vision } = await req.json().catch(() => ({ vision: false }));
   const s = readSettings();
   const started = Date.now();

@@ -22,6 +22,8 @@ export interface Settings {
   xhsCookie: string;
   searchApiKey: string; // DeepSeek 搜索接口的 Key；大模型用的就是 DeepSeek 时不用填
   appPassword: string;
+  dailyQuota: number; // 每人每天至少采集几篇
+  quotaDays: number[]; // 哪几天计入指标：0=周日 1=周一 … 6=周六
   updateRepo: string; // 自动更新：GitHub 仓库，格式 用户名/仓库名
   updateToken: string; // 私有仓库需要的 GitHub token
 }
@@ -34,6 +36,8 @@ const DEFAULTS: Settings = {
   xhsCookie: "",
   searchApiKey: "",
   appPassword: "",
+  dailyQuota: 1,
+  quotaDays: [1, 2, 3, 4, 5],
   updateRepo: "",
   updateToken: "",
 };
@@ -53,6 +57,8 @@ export function readSettings(): Settings {
     xhsCookie: saved.xhsCookie || env.XHS_COOKIE || "",
     searchApiKey: saved.searchApiKey || "",
     appPassword: saved.appPassword ?? env.APP_PASSWORD ?? "",
+    dailyQuota: Number.isFinite(Number(saved.dailyQuota)) && Number(saved.dailyQuota) >= 0 ? Number(saved.dailyQuota) : DEFAULTS.dailyQuota,
+    quotaDays: Array.isArray(saved.quotaDays) ? saved.quotaDays.map(Number).filter((d) => d >= 0 && d <= 6) : DEFAULTS.quotaDays,
     updateRepo: saved.updateRepo ?? "",
     updateToken: saved.updateToken ?? "",
   };

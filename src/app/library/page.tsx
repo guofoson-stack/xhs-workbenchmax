@@ -17,6 +17,8 @@ interface Item {
   note_url: string | null;
   exam_category: string | null;
   exam_name: string | null;
+  collector: string | null;
+  collector_id: string | null;
 }
 
 export default function LibraryPage() {
@@ -25,6 +27,8 @@ export default function LibraryPage() {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState("heat");
   const [scene, setScene] = useState("");
+  const [by, setBy] = useState("");
+  const [people, setPeople] = useState<{ id: string; name: string }[]>([]);
   const [untagged, setUntagged] = useState(0);
   const [tagging, setTagging] = useState("");
   const [items, setItems] = useState<Item[]>([]);
@@ -33,7 +37,7 @@ export default function LibraryPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const sp = new URLSearchParams({ type, category, q, sort, scene });
+    const sp = new URLSearchParams({ type, category, q, sort, scene, by });
     const r = await fetch("/api/elements?" + sp);
     const j = await r.json();
     setLoading(false);
@@ -41,7 +45,18 @@ export default function LibraryPage() {
     setErr("");
     setItems(j.items);
     fetch("/api/notes/tag-scenes").then((r) => r.json()).then((j) => setUntagged(j.untagged ?? 0));
-  }, [type, category, q, sort, scene]);
+  }, [type, category, q, sort, scene, by]);
+
+  useEffect(() => {
+    // 从团队看板点进来时带 ?by=某人
+    const b = new URLSearchParams(location.search).get("by");
+    fetch("/api/users")
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((j) => {
+        setPeople(j.items);
+        if (b) setBy(b);
+      });
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(load, 250);
@@ -109,6 +124,14 @@ export default function LibraryPage() {
           ))}
           <option>未分类</option>
         </select>
+        <select className="input w-auto" value={by} onChange={(e) => setBy(e.target.value)}>
+          <option value="">全部采集人</option>
+          {people.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
         <input className="input w-48" value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜关键词" />
         <span className="text-xs text-muted">{loading ? "加载中…" : `${items.length} 条`}</span>
       </div>
@@ -151,6 +174,7 @@ export default function LibraryPage() {
             <div className="whitespace-pre-wrap text-sm">{it.template}</div>
             <div className="flex items-center justify-between text-xs text-muted">
               <span className="truncate">
+                {it.collector ? `${it.collector}采集 · ` : ""}
                 {it.exam_category ?? "-"} · 热度 {it.heat} · 用过 {it.use_count} 次 ·{" "}
                 {it.note_url ? (
                   <a href={it.note_url} target="_blank" rel="noreferrer" className="underline">{it.note_title}</a>

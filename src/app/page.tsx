@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useMe } from "@/components/useMe";
 
 type Stats = { notes: number; elements: number; exams: number; generations: number; keyReady?: boolean; error?: string };
 
@@ -13,13 +14,49 @@ const STEPS = [
 
 export default function Home() {
   const [s, setS] = useState<Stats | null>(null);
+  const me = useMe();
+  const isAdmin = me?.user.role === "admin";
+  const task = me?.task;
   useEffect(() => {
     fetch("/api/stats").then((r) => r.json()).then(setS).catch(() => {});
   }, []);
 
   return (
     <div className="space-y-6">
-      {s && s.keyReady === false && (
+      {me && !isAdmin && task && task.target > 0 && (
+        <Link
+          href="/ingest"
+          className={`card flex items-center justify-between gap-3 hover:opacity-90 ${task.done >= task.target ? "border-green-300 bg-green-50" : "border-brand bg-brand-soft"}`}
+        >
+          <div>
+            <div className="font-bold">
+              {task.workday ? "今日任务" : "今天不考核"}：采集爆款 {task.done}/{task.target}
+              {task.workday && task.done >= task.target && " ✅"}
+            </div>
+            <div className="mt-0.5 text-sm text-muted">
+              {task.done >= task.target ? "今天的指标完成了，多采也算数。" : "去小红书找一篇点赞高的同类笔记，用书签一键采集。"}
+            </div>
+          </div>
+          <span className="btn shrink-0">{task.done >= task.target ? "再采一篇" : "去采集"}</span>
+        </Link>
+      )}
+      {isAdmin && me.team && me.team.size > 0 && task?.workday && task.target > 0 && (
+        <Link href="/team" className="card flex items-center justify-between gap-3 hover:border-brand">
+          <div>
+            <div className="font-bold">
+              今天团队采集：<span className={me.team.done >= me.team.size ? "text-green-700" : "text-brand"}>{me.team.done}/{me.team.size} 人完成</span>
+            </div>
+            <div className="mt-0.5 text-sm text-muted">点开看谁还没完成、本周和本月情况</div>
+          </div>
+          <span className="btn-ghost shrink-0">团队看板 ›</span>
+        </Link>
+      )}
+      {isAdmin && me.team && me.team.size === 0 && (
+        <Link href="/team" className="card block text-sm hover:border-brand">
+          👥 还没给员工开账号：到 <b>团队</b> 页添加成员，每个人登录后采集的爆款都会记在 TA 名下。
+        </Link>
+      )}
+      {isAdmin && s && s.keyReady === false && (
         <Link href="/settings" className="card block border-brand bg-brand-soft text-sm hover:opacity-90">
           👋 第一次使用：先到 <b>⚙️ 设置</b> 填大模型的 API Key（点这里）
         </Link>

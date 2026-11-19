@@ -1,7 +1,7 @@
 // 小红书爆款工作台 · 一键启动
 // Windows 双击「启动工作台.bat」，Mac 双击「启动工作台.command」，都会调用这个脚本：
 // 自动更新 → 第一次自动安装依赖 → 代码有改动自动重新构建 → 启动 → 打开浏览器 → 显示同事访问地址
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -70,6 +70,11 @@ if (fs.existsSync(path.join(oldData, "workbench.db")) && !fs.existsSync(path.joi
   fs.renameSync(oldData, path.join(ROOT, "data-已搬走-可删除"));
   say("📦 已把原来的数据搬到「" + newData + "」。");
 }
+// 登录凭证的签名密钥：第一次启动时生成，之后一直用同一个（换了会让所有人重新登录）
+const secretFile = path.join(HOME, ".secret");
+if (!fs.existsSync(secretFile)) fs.writeFileSync(secretFile, randomBytes(32).toString("hex"));
+const SECRET = fs.readFileSync(secretFile, "utf8").trim();
+
 let settings = {};
 try {
   settings = JSON.parse(fs.readFileSync(SETTINGS, "utf8").replace(/^﻿/, ""));
@@ -132,7 +137,7 @@ const server = spawn(process.execPath, [NEXT, "start", "-H", "0.0.0.0", "-p", St
     NODE_NO_WARNINGS: "1",
     NEXT_TELEMETRY_DISABLED: "1",
     WORKBENCH_HOME: HOME,
-    APP_PASSWORD: settings.appPassword || "",
+    WORKBENCH_SECRET: SECRET,
   },
 });
 server.stdout.on("data", () => {}); // Next 自己的启动信息不显示，免得看花眼
@@ -163,10 +168,10 @@ say("\n   · 同事要和这台电脑连同一个 Wi-Fi / 网络");
 say("   · 同事打不开？Windows 第一次启动会弹「防火墙」提示，要勾选「专用网络」并点允许；");
 say("     错过了的话，右键「允许局域网访问.bat」→ 以管理员身份运行");
 say(`   · 配置和数据在：${HOME}（每天自动备份）`);
-if (!settings.aiApiKey) say("   · 第一次使用：在网页的「⚙️ 设置」里填大模型 API Key");
+if (!settings.aiApiKey) say("   · 第一次使用：先在网页上创建管理员账号，再到「⚙️ 设置」里填大模型 API Key");
 say("\n   ⚠️  这个窗口不要关，关掉工作台就停了。\n");
 
-const url = `http://localhost:${PORT}${settings.aiApiKey ? "" : "/settings"}`;
+const url = `http://localhost:${PORT}`;
 if (isWin) spawn("cmd", ["/c", "start", "", url], { detached: true, stdio: "ignore" }).unref();
 else if (process.platform === "darwin") spawn("open", [url], { detached: true, stdio: "ignore" }).unref();
 

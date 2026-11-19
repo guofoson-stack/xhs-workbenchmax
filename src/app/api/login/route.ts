@@ -1,21 +1,16 @@
 import { NextResponse } from "next/server";
-import { AUTH_COOKIE, expectedToken } from "@/lib/auth";
+import { AUTH_COOKIE, signSession } from "@/lib/auth";
+import { get } from "@/lib/db";
+import { checkPassword, sessionCookie } from "@/lib/session";
 
 export async function POST(req: Request) {
-  const { password } = await req.json().catch(() => ({ password: "" }));
-  if (!process.env.APP_PASSWORD) {
-    return NextResponse.json({ error: "服务器还没设置 APP_PASSWORD" }, { status: 500 });
+  const { name, password } = await req.json().catch(() => ({}));
+  const u = get<{ id: string; password_hash: string; active: number }>("select id, password_hash, active from users where name = ?", String(name ?? "").trim());
+  if (!u || !checkPassword(String(password ?? ""), u.password_hash)) {
+    return NextResponse.json({ error: "姓名或密码不对" }, { status: 401 });
   }
-  if (password !== process.env.APP_PASSWORD) {
-    return NextResponse.json({ error: "密码不对" }, { status: 401 });
-  }
+  if (!u.active) return NextResponse.json({ error: "这个账号已被停用，请联系管理员" }, { status: 403 });
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(AUTH_COOKIE, await expectedToken(), {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: new URL(req.url).protocol === "https:", // 局域网是 http，不能强制 secure
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30,
-  });
+  res.cookies.set(AUTH_COOKIE, await signSession(u.id), sessionCookie(req));
   return res;
 }

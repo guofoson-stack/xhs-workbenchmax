@@ -7,6 +7,7 @@ import { allRules } from "@/lib/sensitiveStore";
 import { avoidList } from "@/lib/sensitive";
 import { loadContext, repairTitles, toVersion, type RawVersion } from "@/lib/genContext";
 import { pickSources, sourcesBlock, type Source } from "@/lib/imitate";
+import { errorResponse, requireUser } from "@/lib/session";
 
 export const maxDuration = 240;
 
@@ -15,6 +16,7 @@ export const maxDuration = 240;
  */
 export async function POST(req: Request) {
   try {
+    const me = await requireUser();
     const b = await req.json();
     const { exam, input, category, mode, scenes, sceneReason, model } = loadContext(b);
     if (!input) return NextResponse.json({ error: "请选择或输入考试" }, { status: 400 });
@@ -48,9 +50,9 @@ export async function POST(req: Request) {
 
     const versions = raw.map((v, i) => toVersion(v, sources[i], input));
     const id = newId();
-    run("insert into generations (id,exam_id,exam_input,versions) values (?,?,?,?)", id, exam?.id ?? null, input, JSON.stringify(versions));
+    run("insert into generations (id,exam_id,exam_input,versions,created_by) values (?,?,?,?,?)", id, exam?.id ?? null, input, JSON.stringify(versions), me.id);
     return NextResponse.json({ id, versions, hasExam: !!exam, scenes, sceneReason, mode });
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    return errorResponse(e);
   }
 }

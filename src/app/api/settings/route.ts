@@ -1,4 +1,5 @@
 import { NextResponse, connection } from "next/server";
+import { errorResponse, requireAdmin } from "@/lib/session";
 import { WORKBENCH_HOME, isPlaceholderKey, readSettings, searchKey, writeSettings, type Settings } from "@/lib/config";
 
 const SECRET_KEYS = ["aiApiKey", "xhsCookie", "searchApiKey", "updateToken", "appPassword"] as const;
@@ -11,6 +12,11 @@ function mask(v: string) {
 /** 读取设置（密钥类只显示打码后的样子） */
 export async function GET() {
   await connection();
+  try {
+    await requireAdmin();
+  } catch (e) {
+    return errorResponse(e);
+  }
   const s = readSettings();
   const out: Record<string, unknown> = { ...s, home: WORKBENCH_HOME, keyReady: !isPlaceholderKey(s.aiApiKey), searchReady: !!searchKey(s) };
   for (const k of SECRET_KEYS) {
@@ -22,6 +28,11 @@ export async function GET() {
 
 /** 保存设置：密钥类留空 = 不修改 */
 export async function POST(req: Request) {
+  try {
+    await requireAdmin();
+  } catch (e) {
+    return errorResponse(e);
+  }
   const b = (await req.json()) as Partial<Settings> & { clear?: string[] };
   const patch: Partial<Settings> = {};
   for (const k of ["aiBaseUrl", "aiModel", "aiTextModel", "updateRepo"] as const) {

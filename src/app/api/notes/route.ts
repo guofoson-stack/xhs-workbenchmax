@@ -2,6 +2,7 @@ import { NextResponse, connection } from "next/server";
 import { all, get, newId, run, tx } from "@/lib/db";
 import type { ElementDraft } from "@/lib/types";
 import { canonicalUrl } from "@/lib/xhs";
+import { errorResponse, requireUser } from "@/lib/session";
 
 const TYPES = new Set(["title", "cover", "structure", "hook", "cta", "tags"]);
 const s = (v: unknown) => (v === undefined || v === null || v === "" ? null : String(v));
@@ -14,17 +15,17 @@ export async function POST(req: Request) {
       elements: ElementDraft[];
     };
     if (!note?.title) return NextResponse.json({ error: "缺少标题" }, { status: 400 });
+    const me = await requireUser();
     const url = canonicalUrl(s(note.url)); // 同一篇笔记不同分享链接也能去重
-    if (url && get("select id from notes where url = ?", url)) {
-      return NextResponse.json({ error: "这条链接已经入过库了" }, { status: 400 });
-    }
+    const dup = url ? get<{ who: string | null }>("select u.name as who from notes n left join users u on u.id = n.created_by where n.url = ?", url) : undefined;
+    if (dup) return NextResponse.json({ error: `这篇已经入过库了${dup.who ? `（${dup.who} 采集的）` : ""}，换一篇吧` }, { status: 400 });
 
     const id = newId();
     const rows = (elements ?? []).filter((e) => e.template?.trim() && TYPES.has(e.type));
     tx(() => {
       run(
-        `insert into notes (id,url,title,body,cover_text,cover_path,likes,collects,comments,exam_name,exam_category,account_type,summary,published_at,scene)
-         values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        `insert into notes (id,url,title,body,cover_text,cover_path,likes,collects,comments,exam_name,exam_category,account_type,summary,published_at,scene,created_by)
+         values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         id,
         url,
         String(note.title),
@@ -39,7 +40,8 @@ export async function POST(req: Request) {
         s(note.account_type),
         s(note.summary),
         s(note.published_at),
-        s(note.scene)
+        s(note.scene),
+        me.id
       );
       for (const e of rows) {
         run(
@@ -56,7 +58,7 @@ export async function POST(req: Request) {
     });
     return NextResponse.json({ id, count: rows.length });
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    return errorResponse(e);
   }
 }
 

@@ -10,6 +10,11 @@ export async function GET(req: Request) {
     const type = sp.get("type");
     const category = sp.get("category");
     const kw = sp.get("q")?.trim();
+    const by = sp.get("by");
+    if (by) {
+      where.push("collector_id = ?");
+      params.push(by);
+    }
     const scene = sp.get("scene");
     if (scene) {
       if (scene === "未分类") where.push("(scene is null or scene = '')");

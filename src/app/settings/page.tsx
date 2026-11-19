@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useMe } from "@/components/useMe";
 
 interface S {
   aiBaseUrl: string;
@@ -77,8 +78,9 @@ function SensitiveWords() {
 }
 
 export default function SettingsPage() {
+  const me = useMe();
   const [s, setS] = useState<S | null>(null);
-  const [form, setForm] = useState({ aiBaseUrl: "", aiModel: "", aiTextModel: "", updateRepo: "", aiApiKey: "", xhsCookie: "", searchApiKey: "", updateToken: "", appPassword: "" });
+  const [form, setForm] = useState({ aiBaseUrl: "", aiModel: "", aiTextModel: "", updateRepo: "", aiApiKey: "", xhsCookie: "", searchApiKey: "", updateToken: "" });
   const [msg, setMsg] = useState("");
   const [test, setTest] = useState("");
   const [testing, setTesting] = useState(false);
@@ -86,7 +88,7 @@ export default function SettingsPage() {
   async function load() {
     const j: S = await (await fetch("/api/settings")).json();
     setS(j);
-    setForm((f) => ({ ...f, aiBaseUrl: j.aiBaseUrl, aiModel: j.aiModel, aiTextModel: j.aiTextModel, updateRepo: j.updateRepo, aiApiKey: "", xhsCookie: "", searchApiKey: "", updateToken: "", appPassword: "" }));
+    setForm((f) => ({ ...f, aiBaseUrl: j.aiBaseUrl, aiModel: j.aiModel, aiTextModel: j.aiTextModel, updateRepo: j.updateRepo, aiApiKey: "", xhsCookie: "", searchApiKey: "", updateToken: "" }));
   }
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 打开页面时读取一次设置
@@ -121,6 +123,7 @@ export default function SettingsPage() {
     );
   }
 
+  if (me && me.user.role !== "admin") return <div className="card text-sm text-muted">设置只有管理员能改，有需要请找管理员。</div>;
   if (!s) return <div className="card text-sm text-muted">加载中…</div>;
 
   return (
@@ -191,15 +194,10 @@ export default function SettingsPage() {
           <label className="label">小红书 Cookie（粘贴链接抓取被拦时才需要）{s.xhsCookieMasked && <span className="text-ink">（当前：已填写）</span>}</label>
           <input className="input" type="password" value={form.xhsCookie} onChange={set("xhsCookie")} placeholder="留空 = 不修改" autoComplete="off" />
         </div>
-        <div>
-          <label className="label">登录密码（留空 = 局域网内不用登录；改完要重启工作台才生效）{s.appPasswordMasked && <span className="text-ink">（当前：已设置）</span>}</label>
-          <input className="input" type="password" value={form.appPassword} onChange={set("appPassword")} placeholder="留空 = 不修改" autoComplete="new-password" />
-        </div>
         <div className="flex flex-wrap gap-2">
           <button className="btn-ghost" onClick={() => save()}>保存</button>
           {s.xhsCookieMasked && <button className="btn-ghost" onClick={() => save({ clear: ["xhsCookie"] })}>清除 Cookie</button>}
           {s.searchApiKeyMasked && <button className="btn-ghost" onClick={() => save({ clear: ["searchApiKey"] })}>清除搜索 Key</button>}
-          {s.appPasswordMasked && <button className="btn-ghost" onClick={() => save({ clear: ["appPassword"] })}>取消登录密码</button>}
         </div>
       </section>
 

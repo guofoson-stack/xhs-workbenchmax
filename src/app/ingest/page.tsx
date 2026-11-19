@@ -32,9 +32,11 @@ export default function IngestPage() {
 
   // 书签采集：打开 /ingest#xhs=... 时自动导入并拆解（页面已经开着时也能接收）
   useEffect(() => {
-    const take = () => {
+    const take = async () => {
       const h = window.location.hash;
       if (!h.startsWith("#xhs=")) return;
+      // 没登录先别动网址里的数据：顶部会跳去登录，登录完带着它回来
+      if (!(await fetch("/api/me")).ok) return;
       history.replaceState(null, "", window.location.pathname);
       try {
         importFromBookmark(JSON.parse(decodeURIComponent(h.slice(5))));
