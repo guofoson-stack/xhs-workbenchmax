@@ -1,6 +1,60 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import JSZip from "jszip";
 import type { CoverSpec, GeneratedVersion } from "@/lib/types";
+import { autoReplace, findHits, replacementOf, type Hit, type Rule } from "@/lib/sensitive";
+import { useRules } from "@/components/useRules";
+
+/** 把命中的违禁词标红 */
+function Marked({ text, hits }: { text: string; hits: Hit[] }) {
+  if (!hits.length) return <>{text}</>;
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  hits.forEach((h, i) => {
+    parts.push(text.slice(last, h.start));
+    parts.push(
+      <mark key={i} className="rounded bg-red-100 px-0.5 text-red-700" title={`${h.rule.category}：${h.rule.tip}`}>
+        {h.text}
+      </mark>
+    );
+    last = h.end;
+  });
+  parts.push(text.slice(last));
+  return <>{parts}</>;
+}
+
+function coverText(c: CoverSpec) {
+  return [c.main, c.sub, c.badge, ...(c.lines ?? [])].filter(Boolean).join(" ");
+}
+
+function checkVersion(v: GeneratedVersion, rules: Rule[]) {
+  const fields = [
+    { name: "标题", hits: findHits(v.title, rules) },
+    { name: "封面", hits: findHits(coverText(v.cover), rules) },
+    { name: "正文", hits: findHits(v.body, rules) },
+    { name: "标签", hits: findHits((v.tags ?? []).join(" "), rules) },
+  ];
+  return fields.filter((f) => f.hits.length);
+}
+
+function fixVersion(v: GeneratedVersion, rules: Rule[]) {
+  let count = 0;
+  const fix = (t: string) => {
+    const r = autoReplace(t, rules);
+    count += r.count;
+    return r.text;
+  };
+  const next: GeneratedVersion = {
+    ...v,
+    title: fix(v.title),
+    body: fix(v.body),
+    tags: (v.tags ?? []).map(fix),
+    cover: { ...v.cover, main: fix(v.cover.main), sub: v.cover.sub ? fix(v.cover.sub) : v.cover.sub, badge: v.cover.badge ? fix(v.cover.badge) : v.cover.badge, lines: v.cover.lines?.map(fix) },
+  };
+  return { next, count };
+}
+
+const safeName = (s: string) => s.replace(/[\\/:*?"<>|\s]/g, "").slice(0, 16) || "笔记";
 
 export function coverUrl(spec: CoverSpec) {
   return "/api/cover?s=" + encodeURIComponent(JSON.stringify(spec));
@@ -21,7 +75,31 @@ export default function VersionCard({
 }) {
   const [editing, setEditing] = useState(false);
   const [copied, setCopied] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const rules = useRules();
+  const problems = useMemo(() => checkVersion(v, rules), [v, rules]);
+  const fixable = problems.some((p) => p.hits.some((h) => replacementOf(h) !== null));
   const full = `${v.title}\n\n${v.body}\n\n${(v.tags ?? []).join(" ")}`;
+
+  /** 发布包：封面 PNG + 标题正文标签 txt，打成一个 zip */
+  async function exportZip() {
+    setExporting(true);
+    try {
+      const zip = new JSZip();
+      const name = `${index + 1}-${safeName(v.title)}`;
+      const png = await (await fetch(coverUrl(v.cover))).blob();
+      zip.file(`${name}-封面.png`, png);
+      zip.file(`${name}-标题正文.txt`, "\ufeff" + full.replace(/\n/g, "\r\n"));
+      const blob = await zip.generateAsync({ type: "blob" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${name}.zip`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    } finally {
+      setExporting(false);
+    }
+  }
 
   function copy(text: string, what: string) {
     navigator.clipboard.writeText(text);
@@ -102,18 +180,54 @@ export default function VersionCard({
           ) : (
             <>
               <div className="font-bold">
-                {v.title}
+                <Marked text={v.title} hits={findHits(v.title, rules)} />
                 {[...v.title].length > 20 && <span className="ml-2 rounded bg-amber-100 px-1.5 text-xs font-normal text-amber-800">{[...v.title].length} 字，超过小红书 20 字限制，点「修改」删几个字</span>}
               </div>
-              <div className="max-h-64 overflow-y-auto whitespace-pre-wrap text-sm">{v.body}</div>
-              <div className="text-sm text-blue-600">{(v.tags ?? []).join(" ")}</div>
+              <div className="max-h-64 overflow-y-auto whitespace-pre-wrap text-sm">
+                <Marked text={v.body} hits={findHits(v.body, rules)} />
+              </div>
+              <div className="text-sm text-blue-600">
+                <Marked text={(v.tags ?? []).join(" ")} hits={findHits((v.tags ?? []).join(" "), rules)} />
+              </div>
             </>
           )}
           {(v.how || v.why) && <div className="rounded-lg bg-paper p-2 text-xs text-muted">💡 {v.how || v.why}</div>}
+          {problems.length ? (
+            <div className="space-y-1 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-800">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <b>⚠️ 发布前检查：{problems.reduce((n, p) => n + p.hits.length, 0)} 处可能被限流</b>
+                {onChange && fixable && (
+                  <button className="rounded bg-white px-2 py-0.5 text-red-700 ring-1 ring-red-200 hover:bg-red-100" onClick={() => onChange(fixVersion(v, rules).next)}>
+                    一键替换能自动改的
+                  </button>
+                )}
+              </div>
+              {problems.map((p) => (
+                <div key={p.name}>
+                  <span className="text-red-600">{p.name}：</span>
+                  {p.hits.map((h, i) => {
+                    const rep = replacementOf(h);
+                    return (
+                      <span key={i} className="mr-2">
+                        「{h.text}」<span className="text-red-500">{h.rule.category}</span>
+                        {rep !== null ? ` → ${rep || "删掉"}` : `，${h.rule.tip}`}
+                      </span>
+                    );
+                  })}
+                </div>
+              ))}
+              {problems.some((p) => p.name === "封面") && <div className="text-red-600">封面上的词要点「修改」改封面文案。</div>}
+            </div>
+          ) : (
+            <div className="text-xs text-green-700">✅ 发布前检查：没发现常见限流词</div>
+          )}
           <div className="flex flex-wrap gap-2">
             <button className="btn-ghost" onClick={() => copy(v.title, "标题")}>复制标题</button>
             <button className="btn-ghost" onClick={() => copy(`${v.body}\n\n${(v.tags ?? []).join(" ")}`, "正文")}>复制正文</button>
             <button className="btn-ghost" onClick={() => copy(full, "全部")}>复制全部</button>
+            <button className="btn-ghost" onClick={exportZip} disabled={exporting} title="封面图 + 标题正文 txt，打包下载">
+              {exporting ? "打包中…" : "📦 下载发布包"}
+            </button>
             {copied && <span className="self-center text-xs text-muted">已复制{copied}</span>}
           </div>
         </div>

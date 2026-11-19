@@ -50,7 +50,7 @@ ${input.body}`;
 export const MODES = { imitate: "高度模仿", structure: "结构借鉴", free: "自由发挥" } as const;
 export type Mode = keyof typeof MODES;
 
-export function generateUser(input: { examBlock: string; scenes: string[]; sceneReason: string; sourcesBlock: string; mode: Mode; extra?: string }) {
+export function generateUser(input: { examBlock: string; scenes: string[]; sceneReason: string; sourcesBlock: string; mode: Mode; extra?: string; avoid?: string }) {
   const today = new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
   return `【今天】${today}
 
@@ -64,5 +64,5 @@ ${input.examBlock}
 【每一版要模仿的爆款】
 ${input.sourcesBlock}
 
-${input.extra ? `【本次额外要求】\n${input.extra}\n\n` : ""}请按顺序输出每一版。`;
+${input.avoid ? `【这些词会被小红书限流，标题、封面、正文、标签里都不要出现】\n${input.avoid}\n\n` : ""}${input.extra ? `【本次额外要求】\n${input.extra}\n\n` : ""}请按顺序输出每一版。`;
 }

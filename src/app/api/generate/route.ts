@@ -5,6 +5,8 @@ import { MODES, generateSystem, generateUser, type Mode } from "@/lib/prompts";
 import { get, newId, run } from "@/lib/db";
 import { examBlock } from "@/lib/retrieve";
 import { parseInfo } from "@/lib/examInfo";
+import { allRules } from "@/lib/sensitiveStore";
+import { avoidList } from "@/lib/sensitive";
 import { pickSources, similarity, sourcesBlock, targetScenes, type Source } from "@/lib/imitate";
 import { ELEMENT_LABELS, SCENES, type Exam, type GeneratedVersion } from "@/lib/types";
 
@@ -58,6 +60,7 @@ export async function POST(req: Request) {
             sourcesBlock: sourcesBlock(sources, !!b.note_id),
             mode,
             extra: b.extra,
+            avoid: avoidList(allRules()),
           }),
         },
       ],

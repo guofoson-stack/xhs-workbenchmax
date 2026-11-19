@@ -22,6 +22,60 @@ const PRESETS = [
   { name: "豆包", aiBaseUrl: "https://ark.cn-beijing.volces.com/api/v3", aiModel: "", aiTextModel: "", site: "火山方舟控制台（模型名填接入点 ID）" },
 ];
 
+function SensitiveWords() {
+  const [custom, setCustom] = useState("");
+  const [builtin, setBuiltin] = useState<{ label: string; category: string; tip: string }[]>([]);
+  const [msg, setMsg] = useState("");
+  useEffect(() => {
+    fetch("/api/sensitive")
+      .then((r) => r.json())
+      .then((j) => {
+        setCustom(j.custom ?? "");
+        setBuiltin((j.rules ?? []).filter((r: { category: string }) => r.category !== "自定义"));
+      });
+  }, []);
+  async function save() {
+    const r = await fetch("/api/sensitive", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ custom }) });
+    const j = await r.json();
+    setMsg(r.ok ? `✅ 已保存 ${j.count} 条，刷新生成页后生效` : "保存失败");
+    setTimeout(() => setMsg(""), 3000);
+  }
+  return (
+    <section className="card space-y-3">
+      <div className="font-bold">违禁词（发布前检查用）</div>
+      <p className="text-xs text-muted">
+        生成结果会自动标出这些词，生成时也会提前告诉 AI 避开。内置了一份常见的导流、交易、极限词和承诺类词；你发现新的限流词，加在下面就行。
+      </p>
+      <details className="text-xs text-muted">
+        <summary className="cursor-pointer">查看内置词库（{builtin.length} 组）</summary>
+        <ul className="mt-1 space-y-0.5">
+          {builtin.map((b, i) => (
+            <li key={i}>
+              <span className="chip mr-1">{b.category}</span>
+              {b.label}　<span className="text-muted">→ {b.tip}</span>
+            </li>
+          ))}
+        </ul>
+      </details>
+      <div>
+        <label className="label">自定义违禁词：一行一个，格式「词|类别|替换成」，后两项可以不写</label>
+        <textarea
+          className="input h-32 font-mono"
+          value={custom}
+          onChange={(e) => setCustom(e.target.value)}
+          placeholder={"上岸率|承诺夸大\n速成|夸大|快速掌握\n# 正则写法（两边带空格的 | 分隔）：\nre:\\d+天(上岸|速成) | 承诺夸大"}
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <button className="btn-ghost" onClick={save}>
+          保存
+        </button>
+        {msg && <span className="text-sm">{msg}</span>}
+      </div>
+    </section>
+  );
+}
+
 export default function SettingsPage() {
   const [s, setS] = useState<S | null>(null);
   const [form, setForm] = useState({ aiBaseUrl: "", aiModel: "", aiTextModel: "", updateRepo: "", aiApiKey: "", xhsCookie: "", searchApiKey: "", updateToken: "", appPassword: "" });
@@ -148,6 +202,8 @@ export default function SettingsPage() {
           {s.appPasswordMasked && <button className="btn-ghost" onClick={() => save({ clear: ["appPassword"] })}>取消登录密码</button>}
         </div>
       </section>
+
+      <SensitiveWords />
 
       <p className="text-xs text-muted">
         配置和数据都存在：<code className="rounded bg-white px-1">{s.home}</code>
