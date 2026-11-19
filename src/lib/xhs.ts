@@ -29,7 +29,7 @@ export interface FetchedNote {
 
 /** 从一段文字里找出小红书链接（支持直接粘贴整段分享口令） */
 export function extractUrl(text: string): string | null {
-  const m = text.match(/https?:\/\/(?:www\.)?(?:xiaohongshu\.com|xhslink\.com)\/[^\s，。！"'<>]+/i);
+  const m = text.match(/https?:\/\/(?:www\.)?(?:xiaohongshu\.com|xhslink\.com|rednote\.com)\/[^\s，。！"'<>【】]+/i);
   return m ? m[0] : null;
 }
 
@@ -58,15 +58,23 @@ export function parseCount(v: unknown): number | null {
 /** 正文里的话题 "#考公[话题]#" → "#考公"，表情 "[哭惹R]" 去掉 */
 function cleanDesc(desc: string) {
   return desc
-    .replace(/#([^#\[\n]+)\[话题\]#/g, "#$1")
+    .replace(/#([^#\[\n]+)\[话题\]#/g, "#$1 ")
     .replace(/\[[^\]\n]{1,6}R\]/g, "")
+    .replace(/\n[ \t]+\n/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+$/gm, "")
     .trim();
 }
 
 function parseInitialState(html: string): Record<string, unknown> | null {
   const m = html.match(/window\.__INITIAL_STATE__\s*=\s*([\s\S]*?)<\/script>/);
   if (!m) return null;
-  const js = m[1].trim().replace(/;$/, "").replace(/\bundefined\b/g, "null");
+  // 小红书的数据是 JS 不是纯 JSON：里面有 undefined 和 new Set([])，先转成 JSON 能认的写法
+  const js = m[1]
+    .trim()
+    .replace(/;$/, "")
+    .replace(/\bundefined\b/g, "null")
+    .replace(/new (?:Set|Map)\(\s*(\[[^\]]*\])?\s*\)/g, (_m, arr) => arr || "[]");
   try {
     return JSON.parse(js);
   } catch {
@@ -98,10 +106,10 @@ async function saveDebug(html: string) {
   } catch {}
 }
 
-async function downloadImage(url: string): Promise<{ dataUrl: string; mime: string } | null> {
+async function downloadImage(url: string, referer = "https://www.xiaohongshu.com/"): Promise<{ dataUrl: string; mime: string } | null> {
   try {
-    const res = await fetch(url.replace(/^http:/, "https:"), {
-      headers: { "User-Agent": UA, Referer: "https://www.xiaohongshu.com/" },
+    const res = await fetch(url.replace(/^\/\//, "https://").replace(/^http:/, "https:"), {
+      headers: { "User-Agent": UA, Referer: referer },
       signal: AbortSignal.timeout(15000),
     });
     if (!res.ok) return null;
@@ -160,7 +168,7 @@ export async function fetchNote(input: string): Promise<FetchedNote> {
       published_at: ts ? new Date(ts).toLocaleDateString("sv-SE") : null,
       author: note.user?.nickname ?? note.user?.nickName ?? null,
       type: note.type ?? null,
-      cover: coverUrl ? await downloadImage(coverUrl) : null,
+      cover: coverUrl ? await downloadImage(coverUrl, new URL(finalUrl).origin + "/") : null,
       imageCount: images.length,
     };
   }
@@ -169,11 +177,11 @@ export async function fetchNote(input: string): Promise<FetchedNote> {
   const ogTitle = meta(html, "og:title");
   const ogDesc = meta(html, "description") ?? meta(html, "og:description");
   const ogImage = meta(html, "og:image");
-  if (ogTitle && ogDesc && !/小红书\s*-\s*你的生活指南/.test(ogTitle)) {
+  if (ogTitle && ogDesc && !/你的生活(指南|兴趣社区)/.test(ogTitle)) {
     return {
       url: canonicalUrl(noteId ? `https://www.xiaohongshu.com/explore/${noteId}` : link)!,
       noteId: noteId ?? "",
-      title: ogTitle.replace(/\s*-\s*小红书$/, "").trim(),
+      title: ogTitle.replace(/\s*-\s*(小红书|rednote)$/i, "").trim(),
       body: cleanDesc(ogDesc),
       likes: null,
       collects: null,
@@ -181,7 +189,7 @@ export async function fetchNote(input: string): Promise<FetchedNote> {
       published_at: null,
       author: null,
       type: null,
-      cover: ogImage ? await downloadImage(ogImage) : null,
+      cover: ogImage ? await downloadImage(ogImage, new URL(finalUrl).origin + "/") : null,
       imageCount: ogImage ? 1 : 0,
     };
   }
