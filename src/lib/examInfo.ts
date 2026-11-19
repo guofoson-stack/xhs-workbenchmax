@@ -145,3 +145,40 @@ export function parseInfo(v: unknown): ExamInfo | null {
     return null;
   }
 }
+
+/* ================= 1. 按考情阶段推断「该写什么场景」 ================= */
+
+const DAY = 86400000;
+const days = (a: string, b: string) => Math.round((Date.parse(a) - Date.parse(b)) / DAY);
+
+export function targetScenes(info: ExamInfo | null, today = todayStr()): { scenes: string[]; reason: string } {
+  const general = { scenes: ["备考方法", "资料推荐", "上岸经验"], reason: "没有时间线，按通用备考选题" };
+  if (!info) return general;
+  const rows = info.timeline.filter((r) => isCurrent(r.basis) && r.date);
+  if (!rows.length) return general;
+  const find = (re: RegExp, not?: RegExp) => rows.find((r) => re.test(r.event) && !(not && not.test(r.event)));
+  const signup = find(/报名/, /确认|缴费/);
+  const written = find(/笔试/, /确认|成绩|准考证|大纲/);
+  const interview = find(/面试/, /确认|名单/);
+
+  if (signup && today <= (signup.end || signup.date)) {
+    if (today >= signup.date) return { scenes: ["报名指导", "公告解读", "备考方法"], reason: "正在报名" };
+    const d = days(signup.date, today);
+    return d <= 7
+      ? { scenes: ["报名指导", "公告解读", "备考方法"], reason: `${d} 天后开始报名` }
+      : { scenes: ["公告解读", "报名指导", "备考方法"], reason: `公告已出，${d} 天后开始报名` };
+  }
+  if (written && today < written.date) {
+    const d = days(written.date, today);
+    return d <= 14
+      ? { scenes: ["考前冲刺", "备考方法", "资料推荐"], reason: `离笔试还有 ${d} 天` }
+      : { scenes: ["备考方法", "资料推荐", "考前冲刺"], reason: `离笔试还有 ${d} 天` };
+  }
+  if (written && today >= written.date) {
+    if (interview && today >= interview.date) return { scenes: ["面试", "上岸经验"], reason: "面试阶段" };
+    return { scenes: ["考后估分", "面试", "上岸经验"], reason: "笔试已考完，等成绩 / 准备面试" };
+  }
+  if (signup) return { scenes: ["备考方法", "资料推荐", "考前冲刺"], reason: "报名已结束，等笔试" };
+  return general;
+}
+

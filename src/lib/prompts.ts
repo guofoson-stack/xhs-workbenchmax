@@ -47,20 +47,22 @@ export function decomposeUser(input: {
 ${input.body}`;
 }
 
-export function generateUser(input: {
-  examBlock: string;
-  elementsBlock: string;
-  count: number;
-  extra?: string;
-}) {
+export const MODES = { imitate: "高度模仿", structure: "结构借鉴", free: "自由发挥" } as const;
+export type Mode = keyof typeof MODES;
+
+export function generateUser(input: { examBlock: string; scenes: string[]; sceneReason: string; sourcesBlock: string; mode: Mode; extra?: string }) {
   const today = new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
   return `【今天】${today}
 
 【目标考情】
 ${input.examBlock}
 
-【可用积木】
-${input.elementsBlock}
+【这次的选题场景】${input.scenes[0]}（${input.sceneReason}）
 
-${input.extra ? `【本次额外要求】\n${input.extra}\n\n` : ""}请生成 ${input.count} 个版本。`;
+【本次模仿强度】${MODES[input.mode]}
+
+【每一版要模仿的爆款】
+${input.sourcesBlock}
+
+${input.extra ? `【本次额外要求】\n${input.extra}\n\n` : ""}请按顺序输出每一版。`;
 }

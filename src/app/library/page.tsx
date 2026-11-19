@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import Stars from "@/components/Stars";
-import { CATEGORIES, ELEMENT_LABELS, type ElementType } from "@/lib/types";
+import { CATEGORIES, ELEMENT_LABELS, SCENES, type ElementType } from "@/lib/types";
 
 interface Item {
   id: string;
@@ -11,7 +11,9 @@ interface Item {
   rating: number;
   use_count: number;
   heat: number;
+  note_id: string;
   note_title: string;
+  scene: string | null;
   note_url: string | null;
   exam_category: string | null;
   exam_name: string | null;
@@ -22,20 +24,24 @@ export default function LibraryPage() {
   const [category, setCategory] = useState("");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState("heat");
+  const [scene, setScene] = useState("");
+  const [untagged, setUntagged] = useState(0);
+  const [tagging, setTagging] = useState("");
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
-    const sp = new URLSearchParams({ type, category, q, sort });
+    const sp = new URLSearchParams({ type, category, q, sort, scene });
     const r = await fetch("/api/elements?" + sp);
     const j = await r.json();
     setLoading(false);
     if (!r.ok) return setErr(j.error);
     setErr("");
     setItems(j.items);
-  }, [type, category, q, sort]);
+    fetch("/api/notes/tag-scenes").then((r) => r.json()).then((j) => setUntagged(j.untagged ?? 0));
+  }, [type, category, q, sort, scene]);
 
   useEffect(() => {
     const t = setTimeout(load, 250);
@@ -45,6 +51,31 @@ export default function LibraryPage() {
   async function patch(id: string, body: Record<string, unknown>) {
     await fetch(`/api/elements/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     setItems((xs) => xs.map((x) => (x.id === id ? { ...x, ...body } : x)));
+  }
+
+  async function setNoteScene(noteId: string, sc: string) {
+    await fetch(`/api/notes/${noteId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scene: sc }) });
+    setItems((xs) => xs.map((x) => (x.note_id === noteId ? { ...x, scene: sc } : x)));
+  }
+
+  async function tagAll() {
+    setTagging("AI 正在给旧素材补场景标签…");
+    let left = untagged;
+    let total = 0;
+    while (left > 0) {
+      const r = await fetch("/api/notes/tag-scenes", { method: "POST" });
+      const j = await r.json();
+      if (!r.ok) {
+        setTagging("❌ " + j.error);
+        return;
+      }
+      total += j.tagged;
+      left = j.left;
+      setTagging(`已补 ${total} 篇，还剩 ${left} 篇…`);
+      if (!j.tagged) break;
+    }
+    setTagging(`✅ 补好了 ${total} 篇。标得不对可以在每张卡片上直接改。`);
+    load();
   }
 
   async function remove(id: string) {
@@ -71,10 +102,30 @@ export default function LibraryPage() {
           <option value="heat">按热度</option>
           <option value="new">按最新</option>
         </select>
+        <select className="input w-auto" value={scene} onChange={(e) => setScene(e.target.value)}>
+          <option value="">全部场景</option>
+          {SCENES.map((c) => (
+            <option key={c}>{c}</option>
+          ))}
+          <option>未分类</option>
+        </select>
         <input className="input w-48" value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜关键词" />
         <span className="text-xs text-muted">{loading ? "加载中…" : `${items.length} 条`}</span>
       </div>
       {err && <div className="card text-sm text-brand">{err}</div>}
+      {(untagged > 0 || tagging) && (
+        <div className="card flex flex-wrap items-center gap-3 text-sm">
+          {untagged > 0 && !tagging.startsWith("✅") && (
+            <>
+              <span>🏷 有 {untagged} 篇爆款还没标「场景」，生成时没法按考试阶段挑选它们。</span>
+              <button className="btn" onClick={tagAll} disabled={!!tagging && !tagging.startsWith("❌")}>
+                一键补标签
+              </button>
+            </>
+          )}
+          {tagging && <span className="text-muted">{tagging}</span>}
+        </div>
+      )}
 
       <div className="grid gap-3 md:grid-cols-2">
         {items.map((it) => (
@@ -82,6 +133,17 @@ export default function LibraryPage() {
             <div className="flex items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-1">
                 <span className="chip">{ELEMENT_LABELS[it.type]}</span>
+                <select
+                  className={`rounded-full border-0 px-2 py-0.5 text-xs ${it.scene ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-700"}`}
+                  value={it.scene ?? ""}
+                  onChange={(e) => setNoteScene(it.note_id, e.target.value)}
+                  title="这篇爆款的场景（改了会对同一篇的所有积木生效）"
+                >
+                  <option value="">未分类</option>
+                  {SCENES.map((c) => (
+                    <option key={c}>{c}</option>
+                  ))}
+                </select>
                 {it.pattern && <span className="text-xs text-muted">{it.pattern}</span>}
               </div>
               <Stars value={it.rating} onChange={(v) => patch(it.id, { rating: v })} />

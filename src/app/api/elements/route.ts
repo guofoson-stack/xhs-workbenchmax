@@ -10,6 +10,14 @@ export async function GET(req: Request) {
     const type = sp.get("type");
     const category = sp.get("category");
     const kw = sp.get("q")?.trim();
+    const scene = sp.get("scene");
+    if (scene) {
+      if (scene === "未分类") where.push("(scene is null or scene = '')");
+      else {
+        where.push("scene = ?");
+        params.push(scene);
+      }
+    }
     if (type) {
       where.push("type = ?");
       params.push(type);

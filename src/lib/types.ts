@@ -9,6 +9,9 @@ export const ELEMENT_LABELS: Record<ElementType, string> = {
   tags: "话题标签",
 };
 
+/** 爆款笔记的「场景」：这篇是在考试哪个阶段、讲什么话题。生成时按考情阶段优先挑同场景的爆款模仿。 */
+export const SCENES = ["公告解读", "报名指导", "备考方法", "资料推荐", "考前冲刺", "考后估分", "面试", "企业文化时政", "上岸经验", "其他"];
+
 export const CATEGORIES = ["事业单位", "国企", "银行", "公务员", "教师", "军队文职", "医疗卫生", "其他"];
 
 export interface ElementDraft {
@@ -23,6 +26,7 @@ export interface DecomposeResult {
   exam_name: string;
   exam_category: string;
   account_type: string;
+  scene: string;
   cover_text: string;
   summary: string;
   elements: ElementDraft[];
@@ -68,6 +72,16 @@ export interface GeneratedVersion {
   cover: CoverSpec;
   body: string;
   tags: string[];
-  refs: { title?: string; cover?: string; structure?: string; hook?: string; cta?: string };
-  why: string;
+  refs: Partial<Record<ElementType, string>>;
+  why?: string; // 旧版字段
+  how?: string; // 怎么套的模板
+  source?: {
+    note_id: string;
+    note_title: string;
+    note_url: string | null;
+    scene: string | null;
+    title_template: string | null;
+    similarity: number | null; // 标题借鉴度 0~1
+    borrowed: string[];
+  };
 }

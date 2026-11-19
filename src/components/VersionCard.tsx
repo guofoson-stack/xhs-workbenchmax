@@ -43,6 +43,36 @@ export default function VersionCard({
         </div>
       </div>
 
+      {v.source && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-900">
+          <span>
+            📎 模仿：
+            {v.source.note_url ? (
+              <a href={v.source.note_url} target="_blank" rel="noreferrer" className="font-bold underline">
+                {v.source.note_title}
+              </a>
+            ) : (
+              <b>{v.source.note_title}</b>
+            )}
+            {v.source.scene && <span className="ml-1 rounded bg-white/70 px-1.5">{v.source.scene}</span>}
+          </span>
+          {v.source.title_template && (
+            <span>
+              标题模板：<span className="font-mono">{v.source.title_template}</span>
+            </span>
+          )}
+          {v.source.similarity != null && (
+            <span
+              className={`rounded px-1.5 py-0.5 ${v.source.similarity >= 0.5 ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}`}
+              title="新标题保留了模板里多少固定字词"
+            >
+              标题借鉴度 {Math.round(v.source.similarity * 100)}%{v.source.similarity < 0.5 ? "（偏低）" : ""}
+            </span>
+          )}
+          {v.source.borrowed?.length > 0 && <span className="text-blue-700/70">（原篇没有的部分从同场景爆款补：{v.source.borrowed.join("、")}）</span>}
+        </div>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-[200px_1fr]">
         <a href={coverUrl(v.cover)} target="_blank" rel="noreferrer" title="点开看大图 / 右键保存">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -52,7 +82,7 @@ export default function VersionCard({
         <div className="min-w-0 space-y-2">
           {editing && onChange ? (
             <>
-              <input className="input font-bold" value={v.title} maxLength={20} onChange={(e) => onChange({ ...v, title: e.target.value })} />
+              <input className="input font-bold" value={v.title} onChange={(e) => onChange({ ...v, title: e.target.value })} />
               <div className="grid grid-cols-3 gap-2">
                 <select className="input" value={v.cover.layout} onChange={(e) => onChange({ ...v, cover: { ...v.cover, layout: e.target.value as CoverSpec["layout"] } })}>
                   <option value="bigword">大字报</option>
@@ -71,12 +101,15 @@ export default function VersionCard({
             </>
           ) : (
             <>
-              <div className="font-bold">{v.title}</div>
+              <div className="font-bold">
+                {v.title}
+                {[...v.title].length > 20 && <span className="ml-2 rounded bg-amber-100 px-1.5 text-xs font-normal text-amber-800">{[...v.title].length} 字，超过小红书 20 字限制，点「修改」删几个字</span>}
+              </div>
               <div className="max-h-64 overflow-y-auto whitespace-pre-wrap text-sm">{v.body}</div>
               <div className="text-sm text-blue-600">{(v.tags ?? []).join(" ")}</div>
             </>
           )}
-          {v.why && <div className="rounded-lg bg-paper p-2 text-xs text-muted">💡 {v.why}</div>}
+          {(v.how || v.why) && <div className="rounded-lg bg-paper p-2 text-xs text-muted">💡 {v.how || v.why}</div>}
           <div className="flex flex-wrap gap-2">
             <button className="btn-ghost" onClick={() => copy(v.title, "标题")}>复制标题</button>
             <button className="btn-ghost" onClick={() => copy(`${v.body}\n\n${(v.tags ?? []).join(" ")}`, "正文")}>复制正文</button>

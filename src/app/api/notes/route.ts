@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
-import { get, newId, run, tx } from "@/lib/db";
+import { NextResponse, connection } from "next/server";
+import { all, get, newId, run, tx } from "@/lib/db";
 import type { ElementDraft } from "@/lib/types";
 import { canonicalUrl } from "@/lib/xhs";
 
@@ -23,8 +23,8 @@ export async function POST(req: Request) {
     const rows = (elements ?? []).filter((e) => e.template?.trim() && TYPES.has(e.type));
     tx(() => {
       run(
-        `insert into notes (id,url,title,body,cover_text,cover_path,likes,collects,comments,exam_name,exam_category,account_type,summary,published_at)
-         values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        `insert into notes (id,url,title,body,cover_text,cover_path,likes,collects,comments,exam_name,exam_category,account_type,summary,published_at,scene)
+         values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         id,
         url,
         String(note.title),
@@ -38,7 +38,8 @@ export async function POST(req: Request) {
         s(note.exam_category),
         s(note.account_type),
         s(note.summary),
-        s(note.published_at)
+        s(note.published_at),
+        s(note.scene)
       );
       for (const e of rows) {
         run(
@@ -57,4 +58,16 @@ export async function POST(req: Request) {
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
+}
+
+/** 爆款笔记列表（生成页「指定模仿」用） */
+export async function GET() {
+  await connection();
+  const items = all(
+    `select n.id, n.title, n.url, n.scene, n.exam_category, n.likes, n.collects,
+            coalesce(n.likes,0) + coalesce(n.collects,0) + 2*coalesce(n.comments,0) as heat,
+            (select count(*) from elements e where e.note_id = n.id) as element_count
+     from notes n order by heat desc limit 500`
+  );
+  return NextResponse.json({ items });
 }

@@ -86,15 +86,6 @@ create table if not exists generations (
   created_at text not null default (datetime('now','localtime'))
 );
 
-create view if not exists element_view as
-select e.*,
-       n.title as note_title,
-       n.url as note_url,
-       n.exam_category,
-       n.exam_name,
-       n.account_type,
-       coalesce(n.likes,0) + coalesce(n.collects,0) + 2*coalesce(n.comments,0) as heat
-from elements e join notes n on n.id = e.note_id;
 `;
 
 declare global {
@@ -116,8 +107,27 @@ function open(): Database {
   return d;
 }
 
+const ELEMENT_VIEW = `
+create view element_view as
+select e.*,
+       n.title as note_title,
+       n.url as note_url,
+       n.exam_category,
+       n.exam_name,
+       n.account_type,
+       n.scene,
+       n.likes as note_likes,
+       n.collects as note_collects,
+       coalesce(n.likes,0) + coalesce(n.collects,0) + 2*coalesce(n.comments,0) as heat
+from elements e join notes n on n.id = e.note_id;
+`;
+
 /** 旧版数据库补字段（新版本加的列） */
 function migrate(d: Database) {
+  const noteCols = new Set(d.prepare("pragma table_info(notes)").all().map((r) => String(r.name)));
+  if (!noteCols.has("scene")) d.exec("alter table notes add column scene text");
+  // 视图每次启动重建，保证带上新字段
+  d.exec("drop view if exists element_view;" + ELEMENT_VIEW);
   const cols = new Set(d.prepare("pragma table_info(exams)").all().map((r) => String(r.name)));
   const add: Record<string, string> = {
     stage: "text", // 当前阶段：如「笔试已结束，等出成绩」

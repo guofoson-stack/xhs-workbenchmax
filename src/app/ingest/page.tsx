@@ -13,7 +13,7 @@ interface FetchedNoteLite {
   published_at: string | null;
   cover: { dataUrl: string; mime: string } | null;
 }
-import { CATEGORIES, ELEMENT_LABELS, type DecomposeResult, type ElementDraft, type ElementType } from "@/lib/types";
+import { CATEGORIES, ELEMENT_LABELS, SCENES, type DecomposeResult, type ElementDraft, type ElementType } from "@/lib/types";
 
 const EMPTY = { url: "", title: "", body: "", cover_text: "", likes: "", collects: "", comments: "", published_at: "" };
 
@@ -175,6 +175,7 @@ export default function IngestPage() {
           exam_name: res.exam_name,
           exam_category: res.exam_category,
           account_type: res.account_type,
+          scene: res.scene,
           summary: res.summary,
         },
         elements: res.elements,
@@ -279,6 +280,15 @@ export default function IngestPage() {
                   <label className="label">考试类别</label>
                   <select className="input" value={res.exam_category} onChange={(e) => setRes({ ...res, exam_category: e.target.value })}>
                     {[res.exam_category, ...CATEGORIES.filter((c) => c !== res.exam_category)].map((c) => (
+                      <option key={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">场景（生成时按这个挑模仿对象）</label>
+                  <select className="input" value={res.scene ?? ""} onChange={(e) => setRes({ ...res, scene: e.target.value })}>
+                    <option value="">未分类</option>
+                    {SCENES.map((c) => (
                       <option key={c}>{c}</option>
                     ))}
                   </select>
