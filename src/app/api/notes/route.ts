@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { get, newId, run, tx } from "@/lib/db";
 import type { ElementDraft } from "@/lib/types";
+import { canonicalUrl } from "@/lib/xhs";
 
 const TYPES = new Set(["title", "cover", "structure", "hook", "cta", "tags"]);
 const s = (v: unknown) => (v === undefined || v === null || v === "" ? null : String(v));
@@ -13,7 +14,7 @@ export async function POST(req: Request) {
       elements: ElementDraft[];
     };
     if (!note?.title) return NextResponse.json({ error: "缺少标题" }, { status: 400 });
-    const url = s(note.url);
+    const url = canonicalUrl(s(note.url)); // 同一篇笔记不同分享链接也能去重
     if (url && get("select id from notes where url = ?", url)) {
       return NextResponse.json({ error: "这条链接已经入过库了" }, { status: 400 });
     }

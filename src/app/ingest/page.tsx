@@ -13,11 +13,15 @@ export default function IngestPage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [res, setRes] = useState<DecomposeResult | null>(null);
+  const [link, setLink] = useState("");
+  const [fetching, setFetching] = useState(false);
+  const [fetchMsg, setFetchMsg] = useState("");
   const [coverPath, setCoverPath] = useState<string | null>(null);
 
   // 支持直接 Ctrl+V 粘贴封面截图
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
+      if ((e.target as HTMLElement)?.id === "xhs-link") return;
       const item = [...(e.clipboardData?.items ?? [])].find((i) => i.type.startsWith("image/"));
       const file = item?.getAsFile();
       if (file) pickCover(file);
@@ -34,19 +38,68 @@ export default function IngestPage() {
   const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setF({ ...f, [k]: e.target.value });
 
-  async function decompose() {
+  async function decompose(fields = f, coverFile = cover) {
     setLoading(true);
     setMsg("");
     setRes(null);
     const fd = new FormData();
-    Object.entries(f).forEach(([k, v]) => fd.append(k, v));
-    if (cover) fd.append("cover", cover);
+    Object.entries(fields).forEach(([k, v]) => fd.append(k, v));
+    if (coverFile) fd.append("cover", coverFile);
     const r = await fetch("/api/decompose", { method: "POST", body: fd });
     const j = await r.json();
     setLoading(false);
     if (!r.ok) return setMsg(j.error ?? "拆解失败");
     setRes(j.result);
     setCoverPath(j.coverPath);
+  }
+
+  /** 粘贴链接 → 自动抓取 → 自动拆解 */
+  async function fetchAndDecompose(text = link) {
+    if (!text.trim()) return;
+    setFetching(true);
+    setFetchMsg("正在抓取笔记…");
+    setRes(null);
+    setMsg("");
+    const r = await fetch("/api/fetch-note", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    const j = await r.json();
+    setFetching(false);
+    if (!r.ok) return setFetchMsg("❌ " + j.error);
+
+    const n = j.note;
+    const fields = {
+      ...EMPTY,
+      url: n.url,
+      title: n.title || "",
+      body: n.body || "",
+      likes: n.likes?.toString() ?? "",
+      collects: n.collects?.toString() ?? "",
+      comments: n.comments?.toString() ?? "",
+      published_at: n.published_at ?? "",
+    };
+    setF(fields);
+    let file: File | null = null;
+    if (n.cover) {
+      const blob = await (await fetch(n.cover.dataUrl)).blob();
+      file = new File([blob], "cover." + (n.cover.mime.split("/")[1] || "jpg"), { type: n.cover.mime });
+    }
+    pickCover(file);
+
+    const notes = [
+      `✅ 抓到了：${n.title || "（无标题）"}`,
+      n.likes == null ? "没抓到点赞收藏数，可以手动补" : "",
+      !n.cover ? "没抓到封面，可以手动粘贴截图" : "",
+      j.duplicate ? "⚠️ 这篇之前已经入过库了" : "",
+    ].filter(Boolean);
+    setFetchMsg(notes.join("　"));
+    if (j.duplicate) return;
+    if (!fields.title && !fields.body) return setFetchMsg(notes.join("　") + "　标题和正文都是空的，请手动补上再拆解");
+    if (!fields.title) fields.title = fields.body.slice(0, 20);
+    if (!fields.body) fields.body = fields.title;
+    await decompose(fields, file);
   }
 
   function updateEl(i: number, patch: Partial<ElementDraft>) {
@@ -64,6 +117,7 @@ export default function IngestPage() {
       body: JSON.stringify({
         note: {
           ...f,
+          url: f.url || link,
           cover_path: coverPath,
           cover_text: res.cover_text,
           exam_name: res.exam_name,
@@ -77,7 +131,9 @@ export default function IngestPage() {
     const j = await r.json();
     setSaving(false);
     if (!r.ok) return setMsg(j.error ?? "入库失败");
-    setMsg(`✅ 已入库，${j.count} 个积木`);
+    setMsg(`✅ 已入库，${j.count} 个积木。可以贴下一篇了`);
+    setFetchMsg("");
+    setLink("");
     setF(EMPTY);
     pickCover(null);
     setRes(null);
@@ -88,11 +144,32 @@ export default function IngestPage() {
     <div className="grid gap-6 lg:grid-cols-2">
       <section className="card space-y-3">
         <div className="h1">入库拆解</div>
-        <p className="text-xs text-muted">把爆款笔记的内容贴进来。封面截图可以直接 Ctrl+V 粘贴。</p>
-        <div>
-          <label className="label">笔记链接（用来去重）</label>
-          <input className="input" value={f.url} onChange={set("url")} placeholder="https://www.xiaohongshu.com/explore/..." />
+        <div className="rounded-xl bg-brand-soft p-4">
+          <label className="mb-2 block text-sm font-bold text-brand">粘贴小红书链接，自动抓取并拆解</label>
+          <div className="flex gap-2">
+            <input
+              id="xhs-link"
+              className="input"
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+              onPaste={(e) => {
+                const text = e.clipboardData.getData("text");
+                if (text) {
+                  e.preventDefault();
+                  setLink(text);
+                  fetchAndDecompose(text);
+                }
+              }}
+              onKeyDown={(e) => e.key === "Enter" && fetchAndDecompose()}
+              placeholder="直接粘贴链接或整段分享口令，粘贴后自动开始"
+            />
+            <button className="btn shrink-0" onClick={() => fetchAndDecompose()} disabled={fetching || loading || !link.trim()}>
+              {fetching ? "抓取中…" : loading ? "拆解中…" : "抓取并拆解"}
+            </button>
+          </div>
+          {fetchMsg && <div className="mt-2 text-xs">{fetchMsg}</div>}
         </div>
+        <p className="text-xs text-muted">下面的内容抓取后会自动填好，可以修改。抓不到时也可以手动填，封面截图直接 Ctrl+V 粘贴。</p>
         <div>
           <label className="label">标题 *</label>
           <input className="input" value={f.title} onChange={set("title")} />
@@ -125,15 +202,17 @@ export default function IngestPage() {
           <label className="label">封面文字（可不填，AI 会从图里识别）</label>
           <input className="input" value={f.cover_text} onChange={set("cover_text")} />
         </div>
-        <button className="btn w-full" onClick={decompose} disabled={loading || !f.title || !f.body}>
-          {loading ? "AI 拆解中…（约 20 秒）" : "拆解"}
+        <button className="btn-ghost w-full" onClick={() => decompose()} disabled={loading || fetching || !f.title || !f.body}>
+          {loading ? "AI 拆解中…（约 20 秒）" : "按下面的内容重新拆解"}
         </button>
         {msg && <div className="text-sm">{msg}</div>}
       </section>
 
       <section className="space-y-3">
         {!res ? (
-          <div className="card text-sm text-muted">拆解结果会显示在这里。你可以修改、打分、删掉不要的积木，确认后再入库。</div>
+          <div className="card text-sm text-muted">
+            {loading ? "🤖 AI 正在拆解，大约 20–40 秒…" : "拆解结果会显示在这里。你可以修改、打分、删掉不要的积木，确认后再入库。"}
+          </div>
         ) : (
           <>
             <div className="card space-y-3">
