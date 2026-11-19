@@ -1,7 +1,7 @@
 import { NextResponse, connection } from "next/server";
-import { WORKBENCH_HOME, isPlaceholderKey, readSettings, writeSettings, type Settings } from "@/lib/config";
+import { WORKBENCH_HOME, isPlaceholderKey, readSettings, searchKey, writeSettings, type Settings } from "@/lib/config";
 
-const SECRET_KEYS = ["aiApiKey", "xhsCookie", "updateToken", "appPassword"] as const;
+const SECRET_KEYS = ["aiApiKey", "xhsCookie", "searchApiKey", "updateToken", "appPassword"] as const;
 
 function mask(v: string) {
   if (!v) return "";
@@ -12,7 +12,7 @@ function mask(v: string) {
 export async function GET() {
   await connection();
   const s = readSettings();
-  const out: Record<string, unknown> = { ...s, home: WORKBENCH_HOME, keyReady: !isPlaceholderKey(s.aiApiKey) };
+  const out: Record<string, unknown> = { ...s, home: WORKBENCH_HOME, keyReady: !isPlaceholderKey(s.aiApiKey), searchReady: !!searchKey(s) };
   for (const k of SECRET_KEYS) {
     out[k] = "";
     out[k + "Masked"] = mask(s[k]);

@@ -20,6 +20,7 @@ export interface Settings {
   aiModel: string;
   aiTextModel: string;
   xhsCookie: string;
+  searchApiKey: string; // DeepSeek 搜索接口的 Key；大模型用的就是 DeepSeek 时不用填
   appPassword: string;
   updateRepo: string; // 自动更新：GitHub 仓库，格式 用户名/仓库名
   updateToken: string; // 私有仓库需要的 GitHub token
@@ -31,6 +32,7 @@ const DEFAULTS: Settings = {
   aiModel: "deepseek-flash",
   aiTextModel: "",
   xhsCookie: "",
+  searchApiKey: "",
   appPassword: "",
   updateRepo: "",
   updateToken: "",
@@ -49,6 +51,7 @@ export function readSettings(): Settings {
     aiModel: saved.aiModel || env.AI_MODEL || DEFAULTS.aiModel,
     aiTextModel: saved.aiTextModel ?? env.AI_TEXT_MODEL ?? "",
     xhsCookie: saved.xhsCookie || env.XHS_COOKIE || "",
+    searchApiKey: saved.searchApiKey || "",
     appPassword: saved.appPassword ?? env.APP_PASSWORD ?? "",
     updateRepo: saved.updateRepo ?? "",
     updateToken: saved.updateToken ?? "",
@@ -64,4 +67,11 @@ export function writeSettings(patch: Partial<Settings>) {
 
 export function isPlaceholderKey(k: string) {
   return !k || /在这里填|your[-_ ]?key/i.test(k);
+}
+
+/** 联网搜索用的 Key：单独填了就用单独的；否则大模型是 DeepSeek 时直接用同一个 Key */
+export function searchKey(s = readSettings()): string {
+  if (s.searchApiKey) return s.searchApiKey;
+  if (/deepseek\.com/i.test(s.aiBaseUrl) && !isPlaceholderKey(s.aiApiKey)) return s.aiApiKey;
+  return "";
 }

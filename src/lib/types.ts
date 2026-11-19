@@ -37,6 +37,30 @@ export interface Exam {
   exam_time: string | null;
   features: string | null;
   product: string | null;
+  stage?: string | null;
+  sources?: string | null;
+  researched_at?: string | null;
+}
+
+export interface ResearchSource {
+  title: string;
+  url: string;
+  site?: string | null;
+  date?: string | null;
+  used_for?: string;
+}
+
+export interface ExamResearch {
+  name: string;
+  short_name: string;
+  category: string;
+  subjects: string;
+  exam_time: string;
+  features: string;
+  stage: string;
+  confidence: string;
+  warnings: string;
+  sources: ResearchSource[];
 }
 
 export type CoverLayout = "bigword" | "list" | "note";

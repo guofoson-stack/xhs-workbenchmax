@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { chat } from "@/lib/ai";
 import { readSettings } from "@/lib/config";
+import { webSearch } from "@/lib/search";
 
 export const maxDuration = 60;
 
@@ -33,6 +34,12 @@ export async function POST(req: Request) {
       } catch (e) {
         result.vision = { ok: false, error: (e as Error).message.slice(0, 200) };
       }
+    }
+    try {
+      await webSearch("事业单位招聘", { count: 1 });
+      result.search = { ok: true };
+    } catch (e) {
+      result.search = { ok: false, error: (e as Error).message };
     }
     return NextResponse.json(result);
   } catch (e) {

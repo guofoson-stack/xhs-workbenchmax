@@ -28,6 +28,7 @@ async function readPrompt(name: string) {
 
 export const decomposeSystem = () => readPrompt("拆解提示词.md");
 export const generateSystem = () => readPrompt("生成提示词.md");
+export const researchSystem = () => readPrompt("考情研究提示词.md");
 
 export function decomposeUser(input: {
   title: string;
@@ -52,7 +53,10 @@ export function generateUser(input: {
   count: number;
   extra?: string;
 }) {
-  return `【目标考情】
+  const today = new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
+  return `【今天】${today}
+
+【目标考情】
 ${input.examBlock}
 
 【可用积木】

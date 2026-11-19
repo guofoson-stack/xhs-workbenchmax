@@ -82,7 +82,8 @@ export function examBlock(exam: Exam | null, input: string) {
     exam.short_name && `简称：${exam.short_name}`,
     `类别：${exam.category}`,
     exam.subjects && `笔试科目：${exam.subjects}`,
-    exam.exam_time && `考试时间：${exam.exam_time}`,
+    exam.stage && `当前阶段：${exam.stage}`,
+    exam.exam_time && `时间节点：${exam.exam_time}`,
     exam.features && `考情特点：${exam.features}`,
     exam.product && `我们对应的资料：${exam.product}`,
   ]

@@ -111,8 +111,20 @@ function open(): Database {
   const d = new DatabaseSync(DB_FILE);
   d.exec("pragma journal_mode = WAL; pragma foreign_keys = ON; pragma busy_timeout = 5000;");
   d.exec(SCHEMA);
+  migrate(d);
   backup(d);
   return d;
+}
+
+/** 旧版数据库补字段（新版本加的列） */
+function migrate(d: Database) {
+  const cols = new Set(d.prepare("pragma table_info(exams)").all().map((r) => String(r.name)));
+  const add: Record<string, string> = {
+    stage: "text", // 当前阶段：如「笔试已结束，等出成绩」
+    sources: "text", // AI 搜索考情时用到的来源（JSON）
+    researched_at: "text",
+  };
+  for (const [c, t] of Object.entries(add)) if (!cols.has(c)) d.exec(`alter table exams add column ${c} ${t}`);
 }
 
 /** 每天第一次启动时备份一份，保留 30 份 */

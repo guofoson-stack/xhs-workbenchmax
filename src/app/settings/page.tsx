@@ -8,6 +8,8 @@ interface S {
   updateRepo: string;
   aiApiKeyMasked: string;
   xhsCookieMasked: string;
+  searchApiKeyMasked: string;
+  searchReady: boolean;
   updateTokenMasked: string;
   appPasswordMasked: string;
   home: string;
@@ -22,7 +24,7 @@ const PRESETS = [
 
 export default function SettingsPage() {
   const [s, setS] = useState<S | null>(null);
-  const [form, setForm] = useState({ aiBaseUrl: "", aiModel: "", aiTextModel: "", updateRepo: "", aiApiKey: "", xhsCookie: "", updateToken: "", appPassword: "" });
+  const [form, setForm] = useState({ aiBaseUrl: "", aiModel: "", aiTextModel: "", updateRepo: "", aiApiKey: "", xhsCookie: "", searchApiKey: "", updateToken: "", appPassword: "" });
   const [msg, setMsg] = useState("");
   const [test, setTest] = useState("");
   const [testing, setTesting] = useState(false);
@@ -30,7 +32,7 @@ export default function SettingsPage() {
   async function load() {
     const j: S = await (await fetch("/api/settings")).json();
     setS(j);
-    setForm((f) => ({ ...f, aiBaseUrl: j.aiBaseUrl, aiModel: j.aiModel, aiTextModel: j.aiTextModel, updateRepo: j.updateRepo, aiApiKey: "", xhsCookie: "", updateToken: "", appPassword: "" }));
+    setForm((f) => ({ ...f, aiBaseUrl: j.aiBaseUrl, aiModel: j.aiModel, aiTextModel: j.aiTextModel, updateRepo: j.updateRepo, aiApiKey: "", xhsCookie: "", searchApiKey: "", updateToken: "", appPassword: "" }));
   }
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 打开页面时读取一次设置
@@ -56,9 +58,12 @@ export default function SettingsPage() {
     setTesting(false);
     if (!j.ok) return setTest("❌ " + j.error);
     const v = j.vision;
+    const sr = j.search;
     setTest(
       `✅ 文字正常（${j.model}，${(j.ms / 1000).toFixed(1)} 秒，回复：${j.reply}）\n` +
-        (v?.ok ? `✅ 看图正常（回复：${v.reply}）——拆封面可以用` : `⚠️ 这个模型不能看图：拆解时请手动填封面文字。${v?.error ?? ""}`)
+        (v?.ok ? `✅ 看图正常（回复：${v.reply}）——拆封面可以用` : `⚠️ 这个模型不能看图：拆解时请手动填封面文字。${v?.error ?? ""}`) +
+        "\n" +
+        (sr?.ok ? `✅ 联网搜索正常——「AI 搜索考情」可以用` : `⚠️ 联网搜索不可用：${sr?.error ?? "未配置"}`)
     );
   }
 
@@ -123,6 +128,12 @@ export default function SettingsPage() {
       <section className="card space-y-3">
         <div className="font-bold">其他（一般不用动）</div>
         <div>
+          <label className="label">
+            DeepSeek 搜索 Key（「AI 搜索考情」用）{s.searchReady ? <span className="text-green-700">（已可用{s.searchApiKeyMasked ? "：单独填的 Key" : "：自动用上面的 DeepSeek Key"}）</span> : <span className="text-brand">（大模型不是 DeepSeek 时要单独填）</span>}
+          </label>
+          <input className="input" type="password" value={form.searchApiKey} onChange={set("searchApiKey")} placeholder="大模型用 DeepSeek 就不用填" autoComplete="off" />
+        </div>
+        <div>
           <label className="label">小红书 Cookie（粘贴链接抓取被拦时才需要）{s.xhsCookieMasked && <span className="text-ink">（当前：已填写）</span>}</label>
           <input className="input" type="password" value={form.xhsCookie} onChange={set("xhsCookie")} placeholder="留空 = 不修改" autoComplete="off" />
         </div>
@@ -133,6 +144,7 @@ export default function SettingsPage() {
         <div className="flex flex-wrap gap-2">
           <button className="btn-ghost" onClick={() => save()}>保存</button>
           {s.xhsCookieMasked && <button className="btn-ghost" onClick={() => save({ clear: ["xhsCookie"] })}>清除 Cookie</button>}
+          {s.searchApiKeyMasked && <button className="btn-ghost" onClick={() => save({ clear: ["searchApiKey"] })}>清除搜索 Key</button>}
           {s.appPasswordMasked && <button className="btn-ghost" onClick={() => save({ clear: ["appPassword"] })}>取消登录密码</button>}
         </div>
       </section>
