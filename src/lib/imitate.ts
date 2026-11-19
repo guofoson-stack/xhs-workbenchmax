@@ -37,7 +37,7 @@ export interface Source {
 
 const TYPES: ElementType[] = ["title", "cover", "structure", "hook", "cta", "tags"];
 
-export function pickSources(opts: { category: string; scenes: string[]; count: number; noteId?: string }): Source[] {
+export function pickSources(opts: { category: string; scenes: string[]; count: number; noteId?: string; exclude?: string[] }): Source[] {
   const rows = all<El>(
     "select id,note_id,type,template,pattern,detail,rating,use_count,heat,scene,exam_category,note_title,note_url,note_likes,note_collects from element_view where rating >= 2"
   );
@@ -62,7 +62,10 @@ export function pickSources(opts: { category: string; scenes: string[]; count: n
   if (opts.noteId && byNote.has(opts.noteId)) {
     notes = Array(opts.count).fill(byNote.get(opts.noteId)!);
   } else {
-    const ranked = [...byNote.values()].filter((els) => els.some((e) => e.type === "title")).sort((a, b) => noteScore(b) - noteScore(a));
+    const excluded = new Set(opts.exclude ?? []);
+    let ranked = [...byNote.values()].filter((els) => els.some((e) => e.type === "title")).sort((a, b) => noteScore(b) - noteScore(a));
+    // 换一篇模仿时排除已经用过的；全都用过了就不排除
+    if (ranked.some((els) => !excluded.has(els[0].note_id))) ranked = ranked.filter((els) => !excluded.has(els[0].note_id));
     if (!ranked.length) return [];
     notes = Array.from({ length: opts.count }, (_, i) => ranked[i % ranked.length]);
   }

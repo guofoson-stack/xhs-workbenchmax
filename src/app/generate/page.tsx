@@ -165,6 +165,14 @@ export default function GeneratePage() {
           v={v}
           index={i}
           chosen={chosen === i}
+          ctx={{
+            exam_id: examId || undefined,
+            exam_input: input,
+            category,
+            mode,
+            scene: scene || undefined,
+            used_notes: versions.map((x) => x.source?.note_id).filter(Boolean) as string[],
+          }}
           onChange={(nv) => {
             const next = versions.map((x, idx) => (idx === i ? nv : x));
             setVersions(next);
