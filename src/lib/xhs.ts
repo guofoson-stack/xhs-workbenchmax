@@ -145,32 +145,32 @@ export async function fetchNote(input: string): Promise<FetchedNote> {
 
   if (/website-login|captcha|verify|\/login/i.test(finalUrl)) {
     await saveDebug(html);
-    throw new Error("小红书要求登录或验证，这次没抓到。可以在 .env.local 里填 XHS_COOKIE 再试，或者先手动粘贴。");
+    throw new Error("小红书把这次抓取当成了机器人，要求登录验证。建议用「📌 存到爆款工作台」书签按钮：在浏览器里打开笔记后点一下就行（安装方法见页面上方）。");
   }
 
   const state = parseInitialState(html);
   const note = state ? findNote(state, noteId) : null;
 
   if (note && (note.title || note.desc)) {
-    const info = note.interactInfo ?? {};
     const images: AnyObj[] = note.imageList ?? [];
-    const coverUrl: string | undefined =
-      images[0]?.urlDefault || images[0]?.url || images[0]?.infoList?.find((i: AnyObj) => i.imageScene?.includes("DFT"))?.url;
-    const ts = Number(note.time);
-    return {
-      url: canonicalUrl(finalUrl.includes("/explore/") || noteId ? `https://www.xiaohongshu.com/explore/${noteId ?? note.noteId}` : link)!,
-      noteId: noteId ?? note.noteId ?? "",
-      title: String(note.title ?? "").trim(),
-      body: cleanDesc(String(note.desc ?? "")),
-      likes: parseCount(info.likedCount),
-      collects: parseCount(info.collectedCount),
-      comments: parseCount(info.commentCount),
-      published_at: ts ? new Date(ts).toLocaleDateString("sv-SE") : null,
-      author: note.user?.nickname ?? note.user?.nickName ?? null,
-      type: note.type ?? null,
-      cover: coverUrl ? await downloadImage(coverUrl, new URL(finalUrl).origin + "/") : null,
-      imageCount: images.length,
-    };
+    const info = note.interactInfo ?? {};
+    return normalizeRaw(
+      {
+        noteId: noteId ?? note.noteId,
+        title: note.title,
+        desc: note.desc,
+        likedCount: info.likedCount,
+        collectedCount: info.collectedCount,
+        commentCount: info.commentCount,
+        time: note.time,
+        author: note.user?.nickname ?? note.user?.nickName,
+        type: note.type,
+        coverUrl: images[0]?.urlDefault || images[0]?.url || images[0]?.infoList?.find((i: AnyObj) => i.imageScene?.includes("DFT"))?.url,
+        imageCount: images.length,
+        url: link,
+      },
+      new URL(finalUrl).origin + "/"
+    );
   }
 
   // 拿不到完整数据时，退一步用网页的分享信息（只有标题、简介、封面，没有点赞收藏）
@@ -196,6 +196,49 @@ export async function fetchNote(input: string): Promise<FetchedNote> {
 
   await saveDebug(html);
   throw new Error(
-    "小红书这次没返回笔记内容（可能是链接过期或被限制了）。可以换一个分享链接再试、在 .env.local 里填 XHS_COOKIE，或者先手动粘贴。"
+    "小红书这次没返回笔记内容（可能被限制了）。建议用「📌 存到爆款工作台」书签按钮：在浏览器里打开笔记后点一下就行（安装方法见页面上方）。"
   );
+}
+
+/** 浏览器书签（或服务器抓取）拿到的原始笔记数据 */
+export interface RawNote {
+  noteId?: string;
+  url?: string;
+  title?: string;
+  desc?: string;
+  likedCount?: unknown;
+  collectedCount?: unknown;
+  commentCount?: unknown;
+  time?: unknown;
+  author?: string;
+  type?: string;
+  coverUrl?: string;
+  coverData?: string; // 书签在浏览器里直接取到的封面（data:image/...;base64,...）
+  imageCount?: number;
+}
+
+/** 统一整理成工作台要的格式，并下载封面 */
+export async function normalizeRaw(raw: RawNote, referer?: string): Promise<FetchedNote> {
+  const id = (raw.noteId && /^[0-9a-f]{24}$/i.test(raw.noteId) ? raw.noteId : null) ?? (raw.url ? noteIdOf(raw.url) : null);
+  const ts = Number(raw.time);
+  const given = typeof raw.coverData === "string" ? raw.coverData.match(/^data:(image\/[a-z0-9.+-]+);base64,/i) : null;
+  const cover = given
+    ? { dataUrl: raw.coverData as string, mime: given[1] }
+    : raw.coverUrl
+      ? await downloadImage(raw.coverUrl, referer ?? (raw.url ? new URL(raw.url).origin + "/" : undefined))
+      : null;
+  return {
+    url: id ? `https://www.xiaohongshu.com/explore/${id}` : (canonicalUrl(raw.url) ?? ""),
+    noteId: id ?? "",
+    title: String(raw.title ?? "").trim(),
+    body: cleanDesc(String(raw.desc ?? "")),
+    likes: parseCount(raw.likedCount),
+    collects: parseCount(raw.collectedCount),
+    comments: parseCount(raw.commentCount),
+    published_at: ts ? new Date(ts).toLocaleDateString("sv-SE") : null,
+    author: raw.author ?? null,
+    type: raw.type ?? null,
+    cover,
+    imageCount: Number(raw.imageCount) || 0,
+  };
 }

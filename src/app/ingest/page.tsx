@@ -1,6 +1,18 @@
 "use client";
 import { useEffect, useState } from "react";
 import Stars from "@/components/Stars";
+import BookmarkInstall from "@/components/BookmarkInstall";
+
+interface FetchedNoteLite {
+  url: string;
+  title: string;
+  body: string;
+  likes: number | null;
+  collects: number | null;
+  comments: number | null;
+  published_at: string | null;
+  cover: { dataUrl: string; mime: string } | null;
+}
 import { CATEGORIES, ELEMENT_LABELS, type DecomposeResult, type ElementDraft, type ElementType } from "@/lib/types";
 
 const EMPTY = { url: "", title: "", body: "", cover_text: "", likes: "", collects: "", comments: "", published_at: "" };
@@ -17,6 +29,24 @@ export default function IngestPage() {
   const [fetching, setFetching] = useState(false);
   const [fetchMsg, setFetchMsg] = useState("");
   const [coverPath, setCoverPath] = useState<string | null>(null);
+
+  // 书签采集：打开 /ingest#xhs=... 时自动导入并拆解（页面已经开着时也能接收）
+  useEffect(() => {
+    const take = () => {
+      const h = window.location.hash;
+      if (!h.startsWith("#xhs=")) return;
+      history.replaceState(null, "", window.location.pathname);
+      try {
+        importFromBookmark(JSON.parse(decodeURIComponent(h.slice(5))));
+      } catch {
+        setFetchMsg("❌ 书签带过来的数据不完整，请回到笔记页面再点一次书签");
+      }
+    };
+    take();
+    window.addEventListener("hashchange", take);
+    return () => window.removeEventListener("hashchange", take);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 支持直接 Ctrl+V 粘贴封面截图
   useEffect(() => {
@@ -68,7 +98,29 @@ export default function IngestPage() {
     const j = await r.json();
     setFetching(false);
     if (!r.ok) return setFetchMsg("❌ " + j.error);
+    await applyFetched(j);
+  }
 
+  /** 书签采集过来的笔记（网址 #xhs=... 里带着数据） */
+  async function importFromBookmark(raw: unknown) {
+    setFetching(true);
+    setFetchMsg("📌 收到书签采集的笔记，正在整理…");
+    setRes(null);
+    setMsg("");
+    const r = await fetch("/api/import-note", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(raw),
+    });
+    const j = await r.json();
+    setFetching(false);
+    if (!r.ok) return setFetchMsg("❌ " + j.error);
+    setLink(j.note.url);
+    await applyFetched(j);
+  }
+
+  /** 把抓到的笔记填进表单，然后自动拆解 */
+  async function applyFetched(j: { note: FetchedNoteLite; duplicate: boolean }) {
     const n = j.note;
     const fields = {
       ...EMPTY,
@@ -144,8 +196,9 @@ export default function IngestPage() {
     <div className="grid gap-6 lg:grid-cols-2">
       <section className="card space-y-3">
         <div className="h1">入库拆解</div>
+        <BookmarkInstall />
         <div className="rounded-xl bg-brand-soft p-4">
-          <label className="mb-2 block text-sm font-bold text-brand">粘贴小红书链接，自动抓取并拆解</label>
+          <label className="mb-2 block text-sm font-bold text-brand">或者：粘贴小红书链接，自动抓取并拆解</label>
           <div className="flex gap-2">
             <input
               id="xhs-link"
