@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { chatJson } from "@/lib/ai";
+import { readSettings } from "@/lib/config";
 import { generateSystem, generateUser } from "@/lib/prompts";
 import { get, newId, run } from "@/lib/db";
 import { elementsBlock, examBlock, pickElements } from "@/lib/retrieve";
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
           content: generateUser({ examBlock: examBlock(exam, input), elementsBlock: elementsBlock(rows), count: n, extra }),
         },
       ],
-      { model: process.env.AI_TEXT_MODEL || undefined, temperature: 0.9 }
+      { model: readSettings().aiTextModel || undefined, temperature: 0.9 }
     );
 
     // 只保留真实存在的积木 id，防止模型乱填

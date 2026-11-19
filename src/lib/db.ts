@@ -1,14 +1,15 @@
 import "server-only";
 import fs from "node:fs";
 import path from "node:path";
+import { WORKBENCH_HOME } from "@/lib/config";
 
 /**
  * 本地数据库：用 Node.js 自带的 SQLite（Node 22.13+ 内置），不用装任何数据库软件。
- * 所有数据都在项目的 data/ 文件夹里：
+ * 所有数据都在「用户目录\爆款工作台数据\data」里（不在程序文件夹，换版本不丢）：
  *   data/workbench.db   数据库
  *   data/covers/        入库笔记的原封面
  *   data/backups/       每天自动备份一次，保留最近 30 份
- * 换电脑时把整个 data/ 文件夹拷走就行。
+ * 换电脑时把整个「爆款工作台数据」文件夹拷走就行。
  */
 
 type Value = string | number | null;
@@ -22,7 +23,7 @@ interface Database {
   prepare(sql: string): Stmt;
 }
 
-export const DATA_DIR = path.join(/*turbopackIgnore: true*/ process.cwd(), "data");
+export const DATA_DIR = path.join(/*turbopackIgnore: true*/ WORKBENCH_HOME, "data");
 export const COVER_DIR = path.join(DATA_DIR, "covers");
 const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const DB_FILE = path.join(DATA_DIR, "workbench.db");

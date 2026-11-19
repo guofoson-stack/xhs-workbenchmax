@@ -2,11 +2,12 @@ import "server-only";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { DATA_DIR } from "@/lib/db";
+import { readSettings } from "@/lib/config";
 
 /**
  * 小红书笔记抓取：读取笔记网页里自带的 window.__INITIAL_STATE__ 数据（和浏览器打开看到的一样）。
  * 支持：网页链接、带 xsec_token 的分享链接、xhslink.com 短链、整段分享口令（会自动找出里面的链接）。
- * 抓不到时可以在 .env.local 里填 XHS_COOKIE（自己浏览器登录小红书后的 cookie）提高成功率。
+ * 抓不到时可以在「设置」页填小红书 Cookie（自己浏览器登录小红书后的 cookie）提高成功率。
  */
 
 const UA =
@@ -131,7 +132,8 @@ export async function fetchNote(input: string): Promise<FetchedNote> {
     Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "zh-CN,zh;q=0.9",
   };
-  if (process.env.XHS_COOKIE) headers.Cookie = process.env.XHS_COOKIE;
+  const cookie = readSettings().xhsCookie;
+  if (cookie) headers.Cookie = cookie;
 
   let res: Response;
   try {

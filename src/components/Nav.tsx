@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/generate", label: "一键生成" },
   { href: "/exams", label: "考情" },
   { href: "/history", label: "生成记录" },
+  { href: "/settings", label: "⚙️ 设置" },
 ];
 
 export default function Nav() {

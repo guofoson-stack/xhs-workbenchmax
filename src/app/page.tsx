@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-type Stats = { notes: number; elements: number; exams: number; generations: number; error?: string };
+type Stats = { notes: number; elements: number; exams: number; generations: number; keyReady?: boolean; error?: string };
 
 const STEPS = [
   { href: "/ingest", n: "1", title: "入库拆解", desc: "每天看到爆款，把标题、正文、封面贴进来，AI 拆成积木，你确认后入库。" },
@@ -19,6 +19,11 @@ export default function Home() {
 
   return (
     <div className="space-y-6">
+      {s && s.keyReady === false && (
+        <Link href="/settings" className="card block border-brand bg-brand-soft text-sm hover:opacity-90">
+          👋 第一次使用：先到 <b>⚙️ 设置</b> 填大模型的 API Key（点这里）
+        </Link>
+      )}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {[
           ["爆款笔记", s?.notes],

@@ -1,4 +1,5 @@
 import "server-only";
+import { isPlaceholderKey, readSettings } from "@/lib/config";
 
 type Part =
   | { type: "text"; text: string }
@@ -17,19 +18,28 @@ export async function chat(
   messages: Message[],
   opts: { model?: string; temperature?: number } = {}
 ): Promise<string> {
-  const base = process.env.AI_BASE_URL;
-  const key = process.env.AI_API_KEY;
-  const model = opts.model || process.env.AI_MODEL;
-  if (!base || !key || !model) throw new Error("缺少 AI_BASE_URL / AI_API_KEY / AI_MODEL 环境变量");
+  const cfg = readSettings();
+  const base = cfg.aiBaseUrl;
+  const key = cfg.aiApiKey;
+  const model = opts.model || cfg.aiModel;
+  if (isPlaceholderKey(key)) throw new Error("还没填大模型的 API Key，请先到「设置」页填写");
+  if (!base || !model) throw new Error("大模型地址或模型名没填，请到「设置」页检查");
 
   const res = await fetch(base.replace(/\/$/, "") + "/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
     body: JSON.stringify({ model, messages, temperature: opts.temperature ?? 0.7 }),
+  }).catch(() => {
+    throw new Error("连不上大模型接口，请检查网络，或到「设置」页检查接口地址");
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`模型接口报错 ${res.status}: ${text.slice(0, 300)}`);
+    const hint =
+      res.status === 401 ? "（API Key 不对，请到「设置」页检查）" :
+      res.status === 402 ? "（账户余额不足，请去模型平台充值）" :
+      res.status === 404 ? "（接口地址或模型名不对，请到「设置」页检查）" :
+      res.status === 429 ? "（请求太频繁或额度用完，稍后再试）" : "";
+    throw new Error(`模型接口报错 ${res.status}${hint}: ${text.slice(0, 200)}`);
   }
   const data = await res.json();
   const content = data?.choices?.[0]?.message?.content;
