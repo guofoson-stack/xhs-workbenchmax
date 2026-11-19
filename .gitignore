@@ -41,3 +41,6 @@ yarn-error.log*
 next-env.d.ts
 
 !.env.example
+
+# 本地数据（数据库、封面、备份）不进 git
+/data

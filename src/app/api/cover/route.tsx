@@ -26,7 +26,7 @@ const localCache = new Map<number, ArrayBuffer | null>();
 async function loadLocalFont(weight: number): Promise<ArrayBuffer | null> {
   if (localCache.has(weight)) return localCache.get(weight)!;
   try {
-    const buf = await readFile(path.join(process.cwd(), "fonts", LOCAL_FONTS[weight]));
+    const buf = await readFile(path.join(/*turbopackIgnore: true*/ process.cwd(), "fonts", LOCAL_FONTS[weight]));
     const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
     localCache.set(weight, ab);
     return ab;

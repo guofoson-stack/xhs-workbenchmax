@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { AUTH_COOKIE, expectedToken } from "@/lib/auth";
 
-// 内部工具：所有页面和接口都要先输入团队密码
+// 内部工具：设置了 APP_PASSWORD 就要先输入团队密码；不设置就不需要登录（只在局域网用时可以不设）
 export async function proxy(request: NextRequest) {
+  if (!process.env.APP_PASSWORD) return NextResponse.next();
   const { pathname } = request.nextUrl;
   if (pathname === "/login" || pathname === "/api/login") return NextResponse.next();
 

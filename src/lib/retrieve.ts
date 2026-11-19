@@ -1,5 +1,5 @@
 import "server-only";
-import { db } from "@/lib/supabase";
+import { all, parseJsonCol } from "@/lib/db";
 import type { ElementType, Exam } from "@/lib/types";
 import { ELEMENT_LABELS } from "@/lib/types";
 
@@ -28,33 +28,26 @@ interface Row {
  * 检索积木：先取同类考试里「人工打分高 + 原笔记数据好」的，
  * 不够再用其他类别的高分积木补齐。早期这样就够用，库大了再加向量检索。
  */
-export async function pickElements(category: string) {
+export function pickElements(category: string): Row[] {
   const picked: Row[] = [];
+  const cols = "id,type,template,pattern,detail,rating,heat,exam_category";
   for (const type of Object.keys(QUOTA) as ElementType[]) {
     const n = QUOTA[type];
-    const same = await db()
-      .from("element_view")
-      .select("id,type,template,pattern,detail,rating,heat,exam_category")
-      .eq("type", type)
-      .eq("exam_category", category)
-      .gte("rating", 2)
-      .order("rating", { ascending: false })
-      .order("heat", { ascending: false })
-      .limit(n);
-    const rows = (same.data ?? []) as Row[];
+    const rows = all<Row>(
+      `select ${cols} from element_view where type = ? and exam_category = ? and rating >= 2
+       order by rating desc, heat desc limit ?`,
+      type, category, n
+    );
     if (rows.length < n) {
-      const other = await db()
-        .from("element_view")
-        .select("id,type,template,pattern,detail,rating,heat,exam_category")
-        .eq("type", type)
-        .neq("exam_category", category)
-        .gte("rating", 3)
-        .order("rating", { ascending: false })
-        .order("heat", { ascending: false })
-        .limit(n - rows.length);
-      rows.push(...((other.data ?? []) as Row[]));
+      rows.push(
+        ...all<Row>(
+          `select ${cols} from element_view where type = ? and coalesce(exam_category,'') <> ? and rating >= 3
+           order by rating desc, heat desc limit ?`,
+          type, category, n - rows.length
+        )
+      );
     }
-    picked.push(...rows);
+    picked.push(...rows.map((r) => ({ ...r, detail: parseJsonCol<Record<string, unknown>>(r.detail, {}) })));
   }
   return picked;
 }

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/supabase";
+import { get, newId, run, tx } from "@/lib/db";
 import type { ElementDraft } from "@/lib/types";
+
+const TYPES = new Set(["title", "cover", "structure", "hook", "cta", "tags"]);
+const s = (v: unknown) => (v === undefined || v === null || v === "" ? null : String(v));
 
 /** 入库：人工确认后的笔记 + 积木一起保存 */
 export async function POST(req: Request) {
@@ -10,44 +13,46 @@ export async function POST(req: Request) {
       elements: ElementDraft[];
     };
     if (!note?.title) return NextResponse.json({ error: "缺少标题" }, { status: 400 });
-
-    const row = {
-      url: note.url || null,
-      title: note.title,
-      body: note.body ?? null,
-      cover_text: note.cover_text ?? null,
-      cover_path: note.cover_path ?? null,
-      likes: Number(note.likes) || 0,
-      collects: Number(note.collects) || 0,
-      comments: Number(note.comments) || 0,
-      exam_name: note.exam_name ?? null,
-      exam_category: note.exam_category ?? null,
-      account_type: note.account_type ?? null,
-      summary: note.summary ?? null,
-      published_at: note.published_at || null,
-    };
-
-    const { data: saved, error } = await db().from("notes").insert(row).select("id").single();
-    if (error) {
-      const msg = error.code === "23505" ? "这条链接已经入过库了" : error.message;
-      return NextResponse.json({ error: msg }, { status: 400 });
+    const url = s(note.url);
+    if (url && get("select id from notes where url = ?", url)) {
+      return NextResponse.json({ error: "这条链接已经入过库了" }, { status: 400 });
     }
 
-    const rows = (elements ?? [])
-      .filter((e) => e.template?.trim())
-      .map((e) => ({
-        note_id: saved.id,
-        type: e.type,
-        template: e.template.trim(),
-        pattern: e.pattern ?? null,
-        detail: e.detail ?? {},
-        rating: Math.min(5, Math.max(1, Number(e.rating) || 3)),
-      }));
-    if (rows.length) {
-      const { error: e2 } = await db().from("elements").insert(rows);
-      if (e2) return NextResponse.json({ error: e2.message }, { status: 400 });
-    }
-    return NextResponse.json({ id: saved.id, count: rows.length });
+    const id = newId();
+    const rows = (elements ?? []).filter((e) => e.template?.trim() && TYPES.has(e.type));
+    tx(() => {
+      run(
+        `insert into notes (id,url,title,body,cover_text,cover_path,likes,collects,comments,exam_name,exam_category,account_type,summary,published_at)
+         values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        id,
+        url,
+        String(note.title),
+        s(note.body),
+        s(note.cover_text),
+        s(note.cover_path),
+        Number(note.likes) || 0,
+        Number(note.collects) || 0,
+        Number(note.comments) || 0,
+        s(note.exam_name),
+        s(note.exam_category),
+        s(note.account_type),
+        s(note.summary),
+        s(note.published_at)
+      );
+      for (const e of rows) {
+        run(
+          "insert into elements (id,note_id,type,template,pattern,detail,rating) values (?,?,?,?,?,?,?)",
+          newId(),
+          id,
+          e.type,
+          e.template.trim(),
+          s(e.pattern),
+          JSON.stringify(e.detail ?? {}),
+          Math.min(5, Math.max(1, Number(e.rating) || 3))
+        );
+      }
+    });
+    return NextResponse.json({ id, count: rows.length });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }

@@ -1,17 +1,11 @@
 import { NextResponse, connection } from "next/server";
-import { db } from "@/lib/supabase";
+import { get } from "@/lib/db";
 
 export async function GET() {
   await connection(); // 每次请求实时查库，不在构建时预渲染
   try {
-    const count = async (t: string) => (await db().from(t).select("id", { count: "exact", head: true })).count ?? 0;
-    const [notes, elements, exams, generations] = await Promise.all([
-      count("notes"),
-      count("elements"),
-      count("exams"),
-      count("generations"),
-    ]);
-    return NextResponse.json({ notes, elements, exams, generations });
+    const c = (t: string) => get<{ n: number }>(`select count(*) as n from ${t}`)?.n ?? 0;
+    return NextResponse.json({ notes: c("notes"), elements: c("elements"), exams: c("exams"), generations: c("generations") });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }

@@ -13,7 +13,7 @@ export async function POST(req: Request) {
   res.cookies.set(AUTH_COOKIE, await expectedToken(), {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: new URL(req.url).protocol === "https:", // 局域网是 http，不能强制 secure
     path: "/",
     maxAge: 60 * 60 * 24 * 30,
   });

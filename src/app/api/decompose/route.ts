@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { chatJson } from "@/lib/ai";
-import { DECOMPOSE_SYSTEM, decomposeUser } from "@/lib/prompts";
-import { db } from "@/lib/supabase";
+import { decomposeSystem, decomposeUser } from "@/lib/prompts";
+import { COVER_DIR, db } from "@/lib/db";
 import type { DecomposeResult } from "@/lib/types";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /** 拆解：接收笔记内容 + 封面图，返回 AI 拆出来的积木（还没入库，等人工确认） */
 export async function POST(req: Request) {
@@ -39,15 +41,18 @@ export async function POST(req: Request) {
       const mime = file.type || "image/jpeg";
       parts.push({ type: "image_url", image_url: { url: `data:${mime};base64,${buf.toString("base64")}` } });
 
-      const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
-      coverPath = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.${ext}`;
-      const { error } = await db().storage.from("covers").upload(coverPath, buf, { contentType: mime });
-      if (error) coverPath = null; // 存图失败不影响拆解
+      // 原封面存到 data/covers/日期/xxx.jpg
+      const ext = ((file.name.split(".").pop() || "jpg").toLowerCase().match(/^[a-z0-9]{2,5}$/)?.[0]) ?? "jpg";
+      const day = new Date().toLocaleDateString("sv-SE");
+      coverPath = `${day}/${crypto.randomUUID()}.${ext}`;
+      db(); // 确保 data 目录已建好
+      await fs.mkdir(path.join(/*turbopackIgnore: true*/ COVER_DIR, day), { recursive: true });
+      await fs.writeFile(path.join(/*turbopackIgnore: true*/ COVER_DIR, coverPath), buf);
     }
 
     const result = await chatJson<DecomposeResult>(
       [
-        { role: "system", content: DECOMPOSE_SYSTEM },
+        { role: "system", content: await decomposeSystem() },
         { role: "user", content: parts },
       ],
       { temperature: 0.3 }
