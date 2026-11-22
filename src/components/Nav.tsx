@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/generate", label: "一键生成" },
   { href: "/exams", label: "考情" },
   { href: "/history", label: "生成记录" },
+  { href: "/radar", label: "📈 销量雷达" },
   { href: "/team", label: "👥 团队", admin: true },
   { href: "/settings", label: "⚙️ 设置", admin: true },
 ];

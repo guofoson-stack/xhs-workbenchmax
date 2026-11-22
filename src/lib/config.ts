@@ -26,6 +26,8 @@ export interface Settings {
   quotaDays: number[]; // 哪几天计入指标：0=周日 1=周一 … 6=周六
   updateRepo: string; // 自动更新：GitHub 仓库，格式 用户名/仓库名
   updateToken: string; // 私有仓库需要的 GitHub token
+  radarRepo: string; // 销量雷达：手机上传数据的 GitHub 仓库，格式 用户名/仓库名
+  radarToken: string; // 销量雷达：能读这个仓库的 GitHub 令牌
 }
 
 const DEFAULTS: Settings = {
@@ -40,6 +42,8 @@ const DEFAULTS: Settings = {
   quotaDays: [1, 2, 3, 4, 5],
   updateRepo: "",
   updateToken: "",
+  radarRepo: "guofoson-stack/xhs-radar",
+  radarToken: "",
 };
 
 /** 每次调用都重新读文件：在设置页改完立即生效，不用重启 */
@@ -61,6 +65,8 @@ export function readSettings(): Settings {
     quotaDays: Array.isArray(saved.quotaDays) ? saved.quotaDays.map(Number).filter((d) => d >= 0 && d <= 6) : DEFAULTS.quotaDays,
     updateRepo: saved.updateRepo ?? "",
     updateToken: saved.updateToken ?? "",
+    radarRepo: saved.radarRepo || DEFAULTS.radarRepo,
+    radarToken: saved.radarToken ?? "",
   };
 }
 

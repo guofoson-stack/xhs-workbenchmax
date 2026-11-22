@@ -2,7 +2,7 @@ import { NextResponse, connection } from "next/server";
 import { errorResponse, requireAdmin } from "@/lib/session";
 import { WORKBENCH_HOME, isPlaceholderKey, readSettings, searchKey, writeSettings, type Settings } from "@/lib/config";
 
-const SECRET_KEYS = ["aiApiKey", "xhsCookie", "searchApiKey", "updateToken", "appPassword"] as const;
+const SECRET_KEYS = ["aiApiKey", "xhsCookie", "searchApiKey", "updateToken", "appPassword", "radarToken"] as const;
 
 function mask(v: string) {
   if (!v) return "";
@@ -35,15 +35,15 @@ export async function POST(req: Request) {
   }
   const b = (await req.json()) as Partial<Settings> & { clear?: string[] };
   const patch: Partial<Settings> = {};
-  for (const k of ["aiBaseUrl", "aiModel", "aiTextModel", "updateRepo"] as const) {
+  for (const k of ["aiBaseUrl", "aiModel", "aiTextModel", "updateRepo", "radarRepo"] as const) {
     if (typeof b[k] === "string") patch[k] = b[k]!.trim();
   }
   for (const k of SECRET_KEYS) {
     if (typeof b[k] === "string" && b[k]!.trim()) patch[k] = b[k]!.trim();
     if (b.clear?.includes(k)) patch[k] = "";
   }
-  if (patch.updateRepo) {
-    patch.updateRepo = patch.updateRepo.replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, "").replace(/\/$/, "");
+  for (const k of ["updateRepo", "radarRepo"] as const) {
+    if (patch[k]) patch[k] = patch[k]!.replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, "").replace(/\/$/, "");
   }
   writeSettings(patch);
   return NextResponse.json({ ok: true });

@@ -12,6 +12,8 @@ interface S {
   searchApiKeyMasked: string;
   searchReady: boolean;
   updateTokenMasked: string;
+  radarRepo: string;
+  radarTokenMasked: string;
   appPasswordMasked: string;
   home: string;
   keyReady: boolean;
@@ -80,7 +82,8 @@ function SensitiveWords() {
 export default function SettingsPage() {
   const me = useMe();
   const [s, setS] = useState<S | null>(null);
-  const [form, setForm] = useState({ aiBaseUrl: "", aiModel: "", aiTextModel: "", updateRepo: "", aiApiKey: "", xhsCookie: "", searchApiKey: "", updateToken: "" });
+  const [form, setForm] = useState({ aiBaseUrl: "", aiModel: "", aiTextModel: "", updateRepo: "", aiApiKey: "", xhsCookie: "", searchApiKey: "", updateToken: "", radarRepo: "", radarToken: "" });
+  const [radarMsg, setRadarMsg] = useState("");
   const [msg, setMsg] = useState("");
   const [test, setTest] = useState("");
   const [testing, setTesting] = useState(false);
@@ -88,7 +91,7 @@ export default function SettingsPage() {
   async function load() {
     const j: S = await (await fetch("/api/settings")).json();
     setS(j);
-    setForm((f) => ({ ...f, aiBaseUrl: j.aiBaseUrl, aiModel: j.aiModel, aiTextModel: j.aiTextModel, updateRepo: j.updateRepo, aiApiKey: "", xhsCookie: "", searchApiKey: "", updateToken: "" }));
+    setForm((f) => ({ ...f, aiBaseUrl: j.aiBaseUrl, aiModel: j.aiModel, aiTextModel: j.aiTextModel, updateRepo: j.updateRepo, aiApiKey: "", xhsCookie: "", searchApiKey: "", updateToken: "", radarRepo: j.radarRepo, radarToken: "" }));
   }
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 打开页面时读取一次设置
@@ -121,6 +124,14 @@ export default function SettingsPage() {
         "\n" +
         (sr?.ok ? `✅ 联网搜索正常——「AI 搜索考情」可以用` : `⚠️ 联网搜索不可用：${sr?.error ?? "未配置"}`)
     );
+  }
+
+  async function saveRadar() {
+    if (!(await save())) return;
+    setRadarMsg("同步中…");
+    const r = await fetch("/api/radar?sync=1");
+    const j = await r.json();
+    setRadarMsg(!r.ok ? "❌ " + j.error : j.syncError ? "❌ " + j.syncError : `✅ 连上了，已有 ${j.days.length} 天的数据`);
   }
 
   if (me && me.user.role !== "admin") return <div className="card text-sm text-muted">设置只有管理员能改，有需要请找管理员。</div>;
@@ -180,6 +191,23 @@ export default function SettingsPage() {
           <input className="input" type="password" value={form.updateToken} onChange={set("updateToken")} placeholder="留空 = 不修改" autoComplete="off" />
         </div>
         <button className="btn-ghost" onClick={() => save()}>保存</button>
+      </section>
+
+      <section className="card space-y-3">
+        <div className="font-bold">📈 销量雷达</div>
+        <p className="text-xs text-muted">安卓手机每晚把小红书销量数据传到这个 GitHub 仓库，工作台每 30 分钟拉一次，同事在「销量雷达」页就能看。</p>
+        <div>
+          <label className="label">数据仓库（格式：用户名/仓库名）</label>
+          <input className="input" value={form.radarRepo} onChange={set("radarRepo")} placeholder="guofoson-stack/xhs-radar" />
+        </div>
+        <div>
+          <label className="label">GitHub 令牌（github_pat_ 开头）{s.radarTokenMasked && <span className="text-ink">（当前：{s.radarTokenMasked}）</span>}</label>
+          <input className="input" type="password" value={form.radarToken} onChange={set("radarToken")} placeholder="留空 = 不修改" autoComplete="off" />
+        </div>
+        <div className="flex items-center gap-2">
+          <button className="btn-ghost" onClick={saveRadar}>保存并同步</button>
+          {radarMsg && <span className="text-sm">{radarMsg}</span>}
+        </div>
       </section>
 
       <section className="card space-y-3">
