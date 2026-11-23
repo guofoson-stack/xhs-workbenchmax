@@ -126,11 +126,13 @@ select e.*,
        n.account_type,
        n.scene,
        n.created_by as collector_id,
+       n.review,
        (select name from users u where u.id = n.created_by) as collector,
        n.likes as note_likes,
        n.collects as note_collects,
        coalesce(n.likes,0) + coalesce(n.collects,0) + 2*coalesce(n.comments,0) as heat
-from elements e join notes n on n.id = e.note_id;
+from elements e join notes n on n.id = e.note_id
+where n.review != 'rejected';
 `;
 
 /** 旧版数据库补字段（新版本加的列） */
@@ -142,6 +144,9 @@ function migrate(d: Database) {
   for (const t of ["notes", "generations", "exams"]) {
     if (!colsOf(t).has("created_by")) d.exec(`alter table ${t} add column created_by text`);
   }
+  // 入库审核：ok 通过（旧数据默认通过）/ pending 待审核 / rejected 退回（不进爆款库、不算指标）
+  if (!noteCols.has("review")) d.exec("alter table notes add column review text not null default 'ok'");
+  for (const c of ["review_note", "reviewed_by", "reviewed_at"]) if (!noteCols.has(c)) d.exec(`alter table notes add column ${c} text`);
   // 视图每次启动重建，保证带上新字段
   d.exec("drop view if exists element_view;" + ELEMENT_VIEW);
   const cols = new Set(d.prepare("pragma table_info(exams)").all().map((r) => String(r.name)));

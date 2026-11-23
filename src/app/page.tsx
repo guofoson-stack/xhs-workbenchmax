@@ -35,9 +35,32 @@ export default function Home() {
             </div>
             <div className="mt-0.5 text-sm text-muted">
               {task.done >= task.target ? "今天的指标完成了，多采也算数。" : "去小红书找一篇点赞高的同类笔记，用书签一键采集。"}
+              {me.pending > 0 && ` 有 ${me.pending} 篇等管理员审核。`}
             </div>
           </div>
           <span className="btn shrink-0">{task.done >= task.target ? "再采一篇" : "去采集"}</span>
+        </Link>
+      )}
+      {me && !isAdmin && me.rejected.length > 0 && (
+        <div className="card space-y-1.5 border-brand bg-red-50">
+          <div className="font-bold text-brand">
+            ↩️ 你有 {me.rejected.length} 篇被管理员退回，不算指标
+            {task && task.workday && task.done < task.target ? "，今天要重新找一篇" : ""}
+          </div>
+          {me.rejected.map((r) => (
+            <div key={r.id} className="text-sm">
+              《{r.title}》<span className="text-muted">（{r.created_at.slice(5, 10)} 采集）</span>
+              {r.review_note && <span className="text-brand">：{r.review_note}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+      {isAdmin && me.pending > 0 && (
+        <Link href="/review" className="card flex items-center justify-between gap-3 border-brand hover:opacity-90">
+          <div className="font-bold">
+            有 <span className="text-brand">{me.pending}</span> 篇员工采集的爆款等你审核
+          </div>
+          <span className="btn shrink-0">去审核</span>
         </Link>
       )}
       {isAdmin && me.team && me.team.size > 0 && task?.workday && task.target > 0 && (

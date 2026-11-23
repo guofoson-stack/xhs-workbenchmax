@@ -11,7 +11,7 @@ interface Row {
   counted: boolean;
   today: { count: number; done: boolean };
   week: { date: string; count: number; workday: boolean; future: boolean }[];
-  month: { count: number; metDays: number; workdays: number; avgLikes: number; avgCollects: number; imitated: number; gens: number };
+  month: { count: number; metDays: number; workdays: number; avgLikes: number; avgCollects: number; imitated: number; gens: number; rejected: number };
 }
 interface Team {
   quota: { daily: number; days: number[] };
@@ -21,6 +21,7 @@ interface Team {
   monthStart: string;
   rows: Row[];
   unassigned: number;
+  pending: number;
 }
 
 const WD = ["日", "一", "二", "三", "四", "五", "六"];
@@ -85,6 +86,11 @@ export default function TeamPage() {
               <span className="ml-2 text-sm font-normal text-muted">{t.quota.daily > 0 ? "今天不考核" : "考核已暂停"}</span>
             )}
           </div>
+          {t.pending > 0 && (
+            <Link href="/review" className="text-sm text-brand hover:underline">
+              {t.pending} 篇待审核 ›
+            </Link>
+          )}
         </div>
         {!staff.length && <div className="text-sm text-muted">还没有员工账号，在下面「成员管理」里添加。</div>}
         {checking && staff.length > 0 && (
@@ -177,7 +183,7 @@ export default function TeamPage() {
               ))}
           </tbody>
         </table>
-        <div className="text-xs text-muted">绿＝达标，红＝没达标，灰＝不考核的日子。点名字看这个人采集了哪些。</div>
+        <div className="text-xs text-muted">绿＝达标，红＝没达标，灰＝不考核的日子。被退回的不算数。点名字看这个人采集了哪些。</div>
       </div>
 
       {/* 本月 */}
@@ -191,6 +197,7 @@ export default function TeamPage() {
               <th className="py-1 text-right font-normal">达标天数</th>
               <th className="py-1 text-right font-normal" title="采集的爆款原笔记平均点赞 / 收藏，看找的爆款够不够爆">平均赞 / 藏</th>
               <th className="py-1 text-right font-normal" title="这个人采集的积木被生成借用的总次数，越高说明采得越有用">被模仿次数</th>
+              <th className="py-1 text-right font-normal" title="被管理员退回的篇数，不算在采集篇数里">被退回</th>
               <th className="py-1 text-right font-normal">本月生成</th>
             </tr>
           </thead>
@@ -211,6 +218,7 @@ export default function TeamPage() {
                       {m.count ? `${fmtW(m.avgLikes)} / ${fmtW(m.avgCollects)}` : "-"}
                     </td>
                     <td className="text-right">{m.imitated}</td>
+                    <td className={`text-right ${m.rejected ? "text-brand" : ""}`}>{m.rejected}</td>
                     <td className="text-right">{m.gens}</td>
                   </tr>
                 );

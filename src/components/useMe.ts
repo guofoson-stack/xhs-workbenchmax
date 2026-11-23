@@ -5,6 +5,10 @@ export interface Me {
   user: { id: string; name: string; role: "admin" | "staff" };
   task: { done: number; target: number; workday: boolean };
   team?: { size: number; done: number };
+  /** 员工：最近被退回的笔记 */
+  rejected: { id: string; title: string; review_note: string | null; created_at: string }[];
+  /** 管理员：全部待审核篇数；员工：自己待审核的篇数 */
+  pending: number;
 }
 
 export const AFTER_LOGIN = "wb_after_login";

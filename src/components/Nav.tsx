@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/exams", label: "考情" },
   { href: "/history", label: "生成记录" },
   { href: "/radar", label: "📈 销量雷达" },
+  { href: "/review", label: "审核", admin: true, badge: true },
   { href: "/team", label: "👥 团队", admin: true },
   { href: "/settings", label: "⚙️ 设置", admin: true },
 ];
@@ -52,6 +53,7 @@ export default function Nav() {
               className={`shrink-0 rounded-lg px-3 py-1.5 text-sm ${path.startsWith(l.href) ? "bg-brand-soft font-medium text-brand" : "text-muted hover:text-ink"}`}
             >
               {l.label}
+              {l.badge && !!me?.pending && <span className="ml-1 rounded-full bg-brand px-1.5 text-xs text-white">{me.pending}</span>}
             </Link>
           ))}
         </nav>

@@ -17,7 +17,7 @@ export function quotaOf() {
 }
 
 export function todayCount(uid: string) {
-  return get<{ n: number }>("select count(*) as n from notes where created_by = ? and date(created_at) = date('now','localtime')", uid)?.n ?? 0;
+  return get<{ n: number }>("select count(*) as n from notes where created_by = ? and review != 'rejected' and date(created_at) = date('now','localtime')", uid)?.n ?? 0;
 }
 
 interface U {
@@ -42,7 +42,7 @@ export function teamStats(weekOf?: string) {
   const from = week[0] < monthStart ? week[0] : monthStart;
   const to = week[6] > q.today ? week[6] : q.today;
   const daily = all<{ uid: string; d: string; n: number }>(
-    "select created_by as uid, date(created_at) as d, count(*) as n from notes where date(created_at) between ? and ? group by 1, 2",
+    "select created_by as uid, date(created_at) as d, count(*) as n from notes where review != 'rejected' and date(created_at) between ? and ? group by 1, 2",
     from,
     to
   );
@@ -54,7 +54,13 @@ export function teamStats(weekOf?: string) {
 
   const quality = all<{ uid: string; n: number; likes: number; collects: number }>(
     `select created_by as uid, count(*) as n, avg(coalesce(likes,0)) as likes, avg(coalesce(collects,0)) as collects
-     from notes where date(created_at) between ? and ? group by 1`,
+     from notes where review != 'rejected' and date(created_at) between ? and ? group by 1`,
+    monthStart,
+    q.today
+  );
+  // 本月被退回的篇数（看采集质量）
+  const rejected = all<{ uid: string; n: number }>(
+    "select created_by as uid, count(*) as n from notes where review = 'rejected' and date(created_at) between ? and ? group by 1",
     monthStart,
     q.today
   );
@@ -92,10 +98,16 @@ export function teamStats(weekOf?: string) {
         avgCollects: Math.round(monthCount?.collects ?? 0),
         imitated: imitated.find((r) => r.uid === u.id)?.n ?? 0,
         gens: gens.find((r) => r.uid === u.id)?.n ?? 0,
+        rejected: rejected.find((r) => r.uid === u.id)?.n ?? 0,
       },
     };
   });
 
   const unassigned = get<{ n: number }>("select count(*) as n from notes where created_by is null")?.n ?? 0;
-  return { quota: { daily: q.daily, days: q.days }, today: q.today, isWorkday: q.isWorkday, week, monthStart, rows, unassigned };
+  const pending = pendingCount();
+  return { quota: { daily: q.daily, days: q.days }, today: q.today, isWorkday: q.isWorkday, week, monthStart, rows, unassigned, pending };
+}
+
+export function pendingCount() {
+  return get<{ n: number }>("select count(*) as n from notes where review = 'pending'")?.n ?? 0;
 }

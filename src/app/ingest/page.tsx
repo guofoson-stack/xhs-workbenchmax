@@ -1,4 +1,5 @@
 "use client";
+import { refreshMe } from "@/components/useMe";
 import { useEffect, useState } from "react";
 import Stars from "@/components/Stars";
 import BookmarkInstall from "@/components/BookmarkInstall";
@@ -122,7 +123,7 @@ export default function IngestPage() {
   }
 
   /** 把抓到的笔记填进表单，然后自动拆解 */
-  async function applyFetched(j: { note: FetchedNoteLite; duplicate: boolean }) {
+  async function applyFetched(j: { note: FetchedNoteLite; duplicate: string | null }) {
     const n = j.note;
     const fields = {
       ...EMPTY,
@@ -146,7 +147,7 @@ export default function IngestPage() {
       `✅ 抓到了：${n.title || "（无标题）"}`,
       n.likes == null ? "没抓到点赞收藏数，可以手动补" : "",
       !n.cover ? "没抓到封面，可以手动粘贴截图" : "",
-      j.duplicate ? "⚠️ 这篇之前已经入过库了" : "",
+      j.duplicate ? `⚠️ ${j.duplicate}` : "",
     ].filter(Boolean);
     setFetchMsg(notes.join("　"));
     if (j.duplicate) return;
@@ -186,7 +187,12 @@ export default function IngestPage() {
     const j = await r.json();
     setSaving(false);
     if (!r.ok) return setMsg(j.error ?? "入库失败");
-    setMsg(`✅ 已入库，${j.count} 个积木。可以贴下一篇了`);
+    setMsg(
+      j.pending
+        ? `✅ 已入库，${j.count} 个积木，等管理员审核。被退回的话当天的指标要重新补一篇`
+        : `✅ 已入库，${j.count} 个积木。可以贴下一篇了`
+    );
+    refreshMe();
     setFetchMsg("");
     setLink("");
     setF(EMPTY);

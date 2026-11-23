@@ -19,6 +19,7 @@ interface Item {
   exam_name: string | null;
   collector: string | null;
   collector_id: string | null;
+  review: string;
 }
 
 export default function LibraryPage() {
@@ -174,6 +175,7 @@ export default function LibraryPage() {
             <div className="whitespace-pre-wrap text-sm">{it.template}</div>
             <div className="flex items-center justify-between text-xs text-muted">
               <span className="truncate">
+                {it.review === "pending" && <span className="mr-1 rounded bg-amber-100 px-1 text-amber-800">待审</span>}
                 {it.collector ? `${it.collector}采集 · ` : ""}
                 {it.exam_category ?? "-"} · 热度 {it.heat} · 用过 {it.use_count} 次 ·{" "}
                 {it.note_url ? (

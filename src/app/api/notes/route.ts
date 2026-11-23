@@ -1,7 +1,8 @@
 import { NextResponse, connection } from "next/server";
-import { all, get, newId, run, tx } from "@/lib/db";
+import { all, newId, run, tx } from "@/lib/db";
 import type { ElementDraft } from "@/lib/types";
 import { canonicalUrl } from "@/lib/xhs";
+import { dupMessage } from "@/lib/dup";
 import { errorResponse, requireUser } from "@/lib/session";
 
 const TYPES = new Set(["title", "cover", "structure", "hook", "cta", "tags"]);
@@ -17,15 +18,15 @@ export async function POST(req: Request) {
     if (!note?.title) return NextResponse.json({ error: "缺少标题" }, { status: 400 });
     const me = await requireUser();
     const url = canonicalUrl(s(note.url)); // 同一篇笔记不同分享链接也能去重
-    const dup = url ? get<{ who: string | null }>("select u.name as who from notes n left join users u on u.id = n.created_by where n.url = ?", url) : undefined;
-    if (dup) return NextResponse.json({ error: `这篇已经入过库了${dup.who ? `（${dup.who} 采集的）` : ""}，换一篇吧` }, { status: 400 });
+    const dup = dupMessage(url);
+    if (dup) return NextResponse.json({ error: dup }, { status: 400 });
 
     const id = newId();
     const rows = (elements ?? []).filter((e) => e.template?.trim() && TYPES.has(e.type));
     tx(() => {
       run(
-        `insert into notes (id,url,title,body,cover_text,cover_path,likes,collects,comments,exam_name,exam_category,account_type,summary,published_at,scene,created_by)
-         values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        `insert into notes (id,url,title,body,cover_text,cover_path,likes,collects,comments,exam_name,exam_category,account_type,summary,published_at,scene,created_by,review)
+         values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         id,
         url,
         String(note.title),
@@ -41,7 +42,8 @@ export async function POST(req: Request) {
         s(note.summary),
         s(note.published_at),
         s(note.scene),
-        me.id
+        me.id,
+        me.role === "admin" ? "ok" : "pending" // 员工采的先进「待审核」，管理员自己采的直接通过
       );
       for (const e of rows) {
         run(
@@ -56,7 +58,7 @@ export async function POST(req: Request) {
         );
       }
     });
-    return NextResponse.json({ id, count: rows.length });
+    return NextResponse.json({ id, count: rows.length, pending: me.role !== "admin" });
   } catch (e) {
     return errorResponse(e);
   }
@@ -69,7 +71,7 @@ export async function GET() {
     `select n.id, n.title, n.url, n.scene, n.exam_category, n.likes, n.collects,
             coalesce(n.likes,0) + coalesce(n.collects,0) + 2*coalesce(n.comments,0) as heat,
             (select count(*) from elements e where e.note_id = n.id) as element_count
-     from notes n order by heat desc limit 500`
+     from notes n where n.review != 'rejected' order by heat desc limit 500`
   );
   return NextResponse.json({ items });
 }
