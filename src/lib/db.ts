@@ -145,6 +145,8 @@ function migrate(d: Database) {
     if (!colsOf(t).has("created_by")) d.exec(`alter table ${t} add column created_by text`);
   }
   // 入库审核：ok 通过（旧数据默认通过）/ pending 待审核 / rejected 退回（不进爆款库、不算指标）
+  // 不参与每日指标的账号（默认人人都考核，管理员也一样）
+  if (!colsOf("users").has("exempt")) d.exec("alter table users add column exempt integer not null default 0");
   if (!noteCols.has("review")) d.exec("alter table notes add column review text not null default 'ok'");
   for (const c of ["review_note", "reviewed_by", "reviewed_at"]) if (!noteCols.has(c)) d.exec(`alter table notes add column ${c} text`);
   // 视图每次启动重建，保证带上新字段

@@ -26,6 +26,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
     if (b.role === "admin" || b.role === "staff") run("update users set role = ? where id = ?", b.role, id);
     if (typeof b.active === "boolean") run("update users set active = ? where id = ?", b.active ? 1 : 0, id);
+    if (typeof b.exempt === "boolean") run("update users set exempt = ? where id = ?", b.exempt ? 1 : 0, id);
     return NextResponse.json({ ok: true });
   } catch (e) {
     return errorResponse(e);

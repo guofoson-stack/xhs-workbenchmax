@@ -23,7 +23,7 @@ export default function Home() {
 
   return (
     <div className="space-y-6">
-      {me && !isAdmin && task && task.target > 0 && (
+      {me && task && task.counted && task.target > 0 && (
         <Link
           href="/ingest"
           className={`card flex items-center justify-between gap-3 hover:opacity-90 ${task.done >= task.target ? "border-green-300 bg-green-50" : "border-brand bg-brand-soft"}`}
@@ -35,13 +35,13 @@ export default function Home() {
             </div>
             <div className="mt-0.5 text-sm text-muted">
               {task.done >= task.target ? "今天的指标完成了，多采也算数。" : "去小红书找一篇点赞高的同类笔记，用书签一键采集。"}
-              {me.pending > 0 && ` 有 ${me.pending} 篇等管理员审核。`}
+              {!isAdmin && me.pending > 0 && ` 有 ${me.pending} 篇等管理员审核。`}
             </div>
           </div>
           <span className="btn shrink-0">{task.done >= task.target ? "再采一篇" : "去采集"}</span>
         </Link>
       )}
-      {me && !isAdmin && me.rejected.length > 0 && (
+      {me && me.rejected.length > 0 && (
         <div className="card space-y-1.5 border-brand bg-red-50">
           <div className="font-bold text-brand">
             ↩️ 你有 {me.rejected.length} 篇被管理员退回，不算指标
@@ -74,7 +74,7 @@ export default function Home() {
           <span className="btn-ghost shrink-0">团队看板 ›</span>
         </Link>
       )}
-      {isAdmin && me.team && me.team.size === 0 && (
+      {isAdmin && me.team && me.team.members <= 1 && (
         <Link href="/team" className="card block text-sm hover:border-brand">
           👥 还没给员工开账号：到 <b>团队</b> 页添加成员，每个人登录后采集的爆款都会记在 TA 名下。
         </Link>

@@ -9,6 +9,7 @@ export interface User {
   name: string;
   role: "admin" | "staff";
   active: number;
+  exempt: number;
 }
 
 /** 密码只存加盐哈希 */
@@ -30,7 +31,7 @@ export async function currentUser(): Promise<User | null> {
   const token = (await cookies()).get(AUTH_COOKIE)?.value;
   const uid = await verifySession(token);
   if (!uid) return null;
-  const u = get<User>("select id, name, role, active from users where id = ?", uid);
+  const u = get<User>("select id, name, role, active, exempt from users where id = ?", uid);
   return u && u.active ? u : null;
 }
 

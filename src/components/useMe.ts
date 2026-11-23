@@ -3,8 +3,8 @@ import { useEffect, useState } from "react";
 
 export interface Me {
   user: { id: string; name: string; role: "admin" | "staff" };
-  task: { done: number; target: number; workday: boolean };
-  team?: { size: number; done: number };
+  task: { done: number; target: number; workday: boolean; counted: boolean };
+  team?: { size: number; done: number; members: number };
   /** 员工：最近被退回的笔记 */
   rejected: { id: string; title: string; review_note: string | null; created_at: string }[];
   /** 管理员：全部待审核篇数；员工：自己待审核的篇数 */

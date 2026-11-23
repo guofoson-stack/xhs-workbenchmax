@@ -59,7 +59,7 @@ export default function Nav() {
         </nav>
         {me && (
           <div className="relative flex shrink-0 items-center gap-2">
-            {t && t.workday && t.target > 0 && me.user.role === "staff" && (
+            {t && t.workday && t.target > 0 && t.counted && (
               <Link href="/ingest" className={`rounded-full px-2.5 py-1 text-xs ${t.done >= t.target ? "bg-green-100 text-green-800" : "bg-red-100 text-red-700"}`}>
                 今日采集 {t.done}/{t.target}
               </Link>

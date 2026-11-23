@@ -92,7 +92,7 @@ export default function TeamPage() {
             </Link>
           )}
         </div>
-        {!staff.length && <div className="text-sm text-muted">还没有员工账号，在下面「成员管理」里添加。</div>}
+        {!staff.length && <div className="text-sm text-muted">没有要考核的人，在下面「成员管理」里添加成员。</div>}
         {checking && staff.length > 0 && (
           <div className="grid gap-3 md:grid-cols-2">
             <div>
@@ -264,7 +264,7 @@ function QuotaCard({ quota, onSaved }: { quota: Team["quota"]; onSaved: () => vo
         </button>
         {msg && <span className="text-xs text-muted">{msg}</span>}
       </div>
-      <div className="text-xs text-muted">填 0 就是暂停考核。只算「员工」账号，管理员不计入。</div>
+      <div className="text-xs text-muted">填 0 就是暂停考核。管理员和员工一样考核；某个人不用考核，就在成员管理里点「设为不考核」。</div>
     </div>
   );
 }
@@ -274,6 +274,7 @@ interface Member {
   name: string;
   role: "admin" | "staff";
   active: number;
+  exempt: number;
   created_at: string;
 }
 
@@ -329,8 +330,8 @@ function Members({ myId, onChanged }: { myId?: string; onChanged: () => void }) 
         <input className="input w-32" placeholder="姓名" value={name} onChange={(e) => setName(e.target.value)} />
         <input className="input w-36" placeholder="初始密码" value={pwd} onChange={(e) => setPwd(e.target.value)} />
         <select className="input w-auto" value={role} onChange={(e) => setRole(e.target.value as "staff" | "admin")}>
-          <option value="staff">员工（考核）</option>
-          <option value="admin">管理员（不考核）</option>
+          <option value="staff">员工</option>
+          <option value="admin">管理员（能审核、删除）</option>
         </select>
         <button className="btn" disabled={!name.trim() || pwd.length < 4} onClick={add}>
           添加
@@ -346,11 +347,17 @@ function Members({ myId, onChanged }: { myId?: string; onChanged: () => void }) 
                 {m.id === myId && <span className="ml-1 text-xs text-muted">（我）</span>}
               </td>
               <td>{m.role === "admin" ? "管理员" : "员工"}</td>
-              <td>{m.active ? "正常" : "已停用"}</td>
+              <td>
+                {m.active ? "正常" : "已停用"}
+                {!!m.active && !!m.exempt && <span className="ml-1 text-xs text-muted">· 不考核</span>}
+              </td>
               <td className="text-xs text-muted">{m.created_at?.slice(0, 10)} 加入</td>
               <td className="space-x-3 text-right text-xs">
                 <button className="hover:text-ink" onClick={() => rename(m)}>改名</button>
                 <button className="hover:text-ink" onClick={() => resetPwd(m)}>重置密码</button>
+                <button className="hover:text-ink" onClick={() => patch(m.id, { exempt: !m.exempt })}>
+                  {m.exempt ? "恢复考核" : "设为不考核"}
+                </button>
                 {m.id !== myId && (
                   <>
                     <button className="hover:text-ink" onClick={() => patch(m.id, { role: m.role === "admin" ? "staff" : "admin" })}>
@@ -366,7 +373,7 @@ function Members({ myId, onChanged }: { myId?: string; onChanged: () => void }) 
           ))}
         </tbody>
       </table>
-      <div className="text-xs text-muted">员工离职点「停用」，TA 采集过的爆款还留在库里、记录也保留。</div>
+      <div className="text-xs text-muted">管理员和员工一样要完成每日采集，区别是管理员能审核、退回、删除爆款，能进团队和设置。员工离职点「停用」，TA 采集过的爆款还留在库里、记录也保留。</div>
     </div>
   );
 }

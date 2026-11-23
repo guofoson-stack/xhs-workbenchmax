@@ -6,7 +6,7 @@ import { errorResponse, hashPassword, requireAdmin, requireUser } from "@/lib/se
 export async function GET() {
   try {
     const me = await requireUser();
-    const cols = me.role === "admin" ? "id, name, role, active, created_at" : "id, name, role, active";
+    const cols = me.role === "admin" ? "id, name, role, active, exempt, created_at" : "id, name, role, active";
     return NextResponse.json({ items: all(`select ${cols} from users order by role = 'admin' desc, created_at`) });
   } catch (e) {
     return errorResponse(e);

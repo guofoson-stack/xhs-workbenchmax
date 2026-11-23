@@ -25,6 +25,7 @@ interface U {
   name: string;
   role: "admin" | "staff";
   active: number;
+  exempt: number;
   joined: string;
 }
 
@@ -36,7 +37,7 @@ export function teamStats(weekOf?: string) {
   const week = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
   const monthStart = q.today.slice(0, 8) + "01";
 
-  const users = all<U>("select id, name, role, active, date(created_at) as joined from users order by role = 'admin', created_at");
+  const users = all<U>("select id, name, role, active, exempt, date(created_at) as joined from users order by role = 'admin', created_at");
 
   // 每人每天采集数（本周 + 本月一起取）
   const from = week[0] < monthStart ? week[0] : monthStart;
@@ -74,7 +75,7 @@ export function teamStats(weekOf?: string) {
   );
 
   const rows = users.map((u) => {
-    const counted = u.role === "staff" && !!u.active; // 管理员和停用账号不计指标
+    const counted = !!u.active && !u.exempt; // 管理员也考核；停用或设为「不考核」的不计
     const monthCount = quality.find((r) => r.uid === u.id);
     return {
       id: u.id,
