@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { researchExam, researchPapers } from "@/lib/research";
 
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 /**
  * AI 搜索考情：返回草稿，人工确认后再由 /api/exams 保存。

@@ -17,6 +17,9 @@ interface S {
   appPasswordMasked: string;
   home: string;
   keyReady: boolean;
+  xhsSearch: boolean;
+  opencliProfile: string;
+  opencliPath: string;
 }
 
 const PRESETS = [
@@ -210,6 +213,8 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      <XhsSearchCard s={s} onSaved={load} />
+
       <section className="card space-y-3">
         <div className="font-bold">其他（一般不用动）</div>
         <div>
@@ -237,5 +242,60 @@ export default function SettingsPage() {
         换版本、自动更新都不会动这个文件夹；换电脑时把它整个拷过去就行。
       </p>
     </div>
+  );
+}
+
+function XhsSearchCard({ s, onSaved }: { s: S; onSaved: () => void }) {
+  const [on, setOn] = useState(s.xhsSearch);
+  const [profile, setProfile] = useState(s.opencliProfile);
+  const [bin, setBin] = useState(s.opencliPath);
+  const [result, setResult] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function saveAnd(check: boolean) {
+    setBusy(true);
+    await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ xhsSearch: on, opencliProfile: profile, opencliPath: bin }) });
+    onSaved();
+    if (!check) {
+      setBusy(false);
+      return setResult("✅ 已保存");
+    }
+    setResult("检测中，大约 10–40 秒…");
+    const j = await (await fetch("/api/settings/opencli", { method: "POST" })).json();
+    setBusy(false);
+    setResult(`${j.search?.ok ? "✅ 小红书搜索可以用：" : "❌ 小红书搜索不可用："}${j.search?.text ?? j.error}\n\n—— opencli doctor ——\n${j.doctor?.text ?? ""}`);
+  }
+
+  return (
+    <section className="card space-y-3">
+      <div className="font-bold">🔎 小红书搜索（OpenCLI）</div>
+      <p className="text-xs text-muted">
+        搜考情时，用这台电脑上的 OpenCLI 去小红书搜真实考生的笔试回忆（题型、题量、怎么考），和网页资料交叉核对。需要：这台电脑装了 OpenCLI，Chrome 开着、Browser Bridge 扩展已连接、Chrome 里小红书已登录（建议用小号）。
+        没装或没连上也不影响，只是只搜网页。
+      </p>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} />
+        搜考情时同时搜小红书
+      </label>
+      <div className="grid gap-2 md:grid-cols-2">
+        <div>
+          <label className="label">浏览器 profile（只连了一个 Chrome 就留空）</label>
+          <input className="input" value={profile} onChange={(e) => setProfile(e.target.value)} placeholder="如 rvzt5kx5，命令行 opencli profile list 可查" />
+        </div>
+        <div>
+          <label className="label">opencli 位置（自动找不到时才填）</label>
+          <input className="input" value={bin} onChange={(e) => setBin(e.target.value)} placeholder="如 C:\Users\你\AppData\Roaming\npm" />
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button className="btn-ghost" disabled={busy} onClick={() => saveAnd(true)}>
+          {busy ? "检测中…" : "保存并检测"}
+        </button>
+        <button className="btn-ghost" disabled={busy} onClick={() => saveAnd(false)}>
+          只保存
+        </button>
+      </div>
+      {result && <pre className="whitespace-pre-wrap rounded-lg bg-paper p-3 text-xs">{result}</pre>}
+    </section>
   );
 }

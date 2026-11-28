@@ -35,9 +35,10 @@ export async function POST(req: Request) {
   }
   const b = (await req.json()) as Partial<Settings> & { clear?: string[] };
   const patch: Partial<Settings> = {};
-  for (const k of ["aiBaseUrl", "aiModel", "aiTextModel", "updateRepo", "radarRepo"] as const) {
+  for (const k of ["aiBaseUrl", "aiModel", "aiTextModel", "updateRepo", "radarRepo", "opencliProfile", "opencliPath"] as const) {
     if (typeof b[k] === "string") patch[k] = b[k]!.trim();
   }
+  if (typeof b.xhsSearch === "boolean") patch.xhsSearch = b.xhsSearch;
   for (const k of SECRET_KEYS) {
     if (typeof b[k] === "string" && b[k]!.trim()) patch[k] = b[k]!.trim();
     if (b.clear?.includes(k)) patch[k] = "";

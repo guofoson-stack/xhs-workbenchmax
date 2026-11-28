@@ -2,6 +2,7 @@ import "server-only";
 import { chatJson } from "@/lib/ai";
 import { paperSystem, researchSystem, supplementSystem } from "@/lib/prompts";
 import { webFetch, webSearch, type SearchResult } from "@/lib/search";
+import { xhsResearch } from "@/lib/xhsResearch";
 import { todayStr, type ExamInfo, type FactRow, type PaperRow, type SubjectRow, type TimelineRow } from "@/lib/examInfo";
 
 const DAY = 86400000;
@@ -36,6 +37,7 @@ export interface ResearchResult {
   info: ExamInfo;
   searched: number;
   fetched: number;
+  xhsRead?: number;
 }
 
 /**
@@ -44,7 +46,7 @@ export interface ResearchResult {
  */
 export async function researchExam(name: string): Promise<ResearchResult> {
   const q = name.trim();
-  const paperJob = researchPapers(q).catch((e: Error) => ({ papers: [] as PaperRow[], missing: [], warnings: "题型题量没搜成：" + e.message, sources: [], searched: 0, fetched: 0 }));
+  const paperJob = researchPapers(q).catch((e: Error): PaperResult => ({ papers: [] as PaperRow[], missing: [], warnings: "题型题量没搜成：" + e.message, sources: [], searched: 0, fetched: 0 }));
   const queries = [`${q} 公开招聘公告`, `${q} 笔试大纲 考试科目`, `${q} 笔试时间 成绩查询 面试`, `${q} 报考条件 招聘人数`];
 
   const settled = await Promise.allSettled(queries.map((query) => webSearch(query, { count: 8, needContent: true, question: `${q} 考情` })));
@@ -132,6 +134,7 @@ export async function researchExam(name: string): Promise<ResearchResult> {
     },
     searched: ordered.length + paper.searched,
     fetched: fulltext.size + paper.fetched,
+    xhsRead: paper.xhs?.read ?? 0,
   };
 }
 
@@ -219,6 +222,7 @@ export interface PaperResult {
   sources: NonNullable<ExamInfo["sources"]>;
   searched: number;
   fetched: number;
+  xhs?: { searched: number; read: number; error?: string };
 }
 
 /**
@@ -239,12 +243,15 @@ export async function researchPapers(name: string): Promise<PaperResult> {
     `${year - 1} ${core} 笔试 题型题量`,
     `${core} 试卷结构 各部分题量`,
   ];
+  // 小红书（本机 OpenCLI）和网页搜索同时进行
+  const xhsJob = xhsResearch(core);
   const settled = await Promise.allSettled(queries.map((query) => webSearch(query, { count: 10, needContent: true, question: `${core} 笔试考几道题、什么题型` })));
   const all = settled.flatMap((s) => (s.status === "fulfilled" ? s.value : []));
-  if (!all.length) {
+  const xhs = await xhsJob;
+  if (!all.length && !xhs.items.length) {
     const err = settled.find((s) => s.status === "rejected") as PromiseRejectedResult | undefined;
     if (err) throw err.reason;
-    return { papers: [], missing: ["题型题量"], warnings: "", sources: [], searched: 0, fetched: 0 };
+    return { papers: [], missing: ["题型题量"], warnings: xhs.error ? `小红书没搜成：${xhs.error}` : "", sources: [], searched: 0, fetched: 0, xhs: { searched: xhs.searched, read: xhs.read, error: xhs.error } };
   }
   const seen = new Set<string>();
   const ranked = all
@@ -279,11 +286,13 @@ export async function researchPapers(name: string): Promise<PaperResult> {
       } catch {}
     })
   );
-  const ordered = [...top, ...diverse.filter((r) => !top.includes(r))].slice(0, 15);
+  // 小红书帖子排最前（真实考生回忆是最强的题型信号），再接网页资料
+  const ordered = [...xhs.items, ...top, ...diverse.filter((r) => !top.includes(r))].slice(0, 15 + xhs.items.length);
   const materials = ordered
     .map((r, i) => {
       const full = fulltext.get(r.url) ?? r.content;
-      const body = i < top.length ? (full || r.summary).slice(0, 7000) : r.content ? r.content.slice(0, 2000) : r.summary || r.snippet;
+      const isXhs = r.site_name === "小红书" && i < xhs.items.length;
+      const body = isXhs ? r.content.slice(0, 5000) : top.includes(r) ? (full || r.summary).slice(0, 7000) : r.content ? r.content.slice(0, 2000) : r.summary || r.snippet;
       return `【资料${i + 1}】${r.title}\n来源：${r.site_name ?? ""} ${r.url}\n发布日期：${r.date ? r.date.slice(0, 10) : "未知"}\n${body}`;
     })
     .join("\n\n");
@@ -299,7 +308,8 @@ export async function researchPapers(name: string): Promise<PaperResult> {
   return {
     papers,
     missing: (out.missing ?? []).map(str).filter(Boolean).map((m) => (/题/.test(m) ? m : `${m}（题型题量）`)),
-    warnings: str(out.warnings),
+    warnings: [str(out.warnings), xhs.error && `小红书没搜成：${xhs.error}`].filter(Boolean).join("；"),
+    xhs: { searched: xhs.searched, read: xhs.read, error: xhs.error },
     sources: (out.sources ?? [])
       .map((s) => {
         const r = ordered[Number(s.n) - 1];

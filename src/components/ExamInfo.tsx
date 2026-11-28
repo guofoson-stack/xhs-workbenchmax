@@ -159,7 +159,11 @@ export function PapersView({ papers, empty }: { papers: PaperRow[]; empty?: Reac
               <b>{p.subject}</b>
               <span className="text-xs text-muted">{[p.duration, p.total && `满分 ${p.total.replace(/^满分/, "")}`, p.format].filter(Boolean).join(" · ")}</span>
               <span className="ml-auto flex gap-1">
-                {p.source && <span className={`rounded px-1.5 py-0.5 text-[11px] ${SOURCE_STYLE[p.source] ?? "bg-gray-100 text-gray-500"}`}>{p.source}</span>}
+                {p.source && (
+                  <span className={`rounded px-1.5 py-0.5 text-[11px] ${SOURCE_STYLE[Object.keys(SOURCE_STYLE).find((k) => p.source!.startsWith(k)) ?? ""] ?? "bg-gray-100 text-gray-500"}`}>
+                    {p.source}
+                  </span>
+                )}
                 <Basis basis={p.basis} />
               </span>
             </div>
@@ -333,9 +337,9 @@ function PapersEditor({ papers, onChange }: { papers: PaperRow[]; onChange: (p: 
             <input className={`${cell} w-24`} value={p.duration ?? ""} onChange={(e) => setP(i, { duration: e.target.value || undefined })} placeholder="时长" />
             <input className={`${cell} w-20`} value={p.total ?? ""} onChange={(e) => setP(i, { total: e.target.value || undefined })} placeholder="满分" />
             <input className={`${cell} w-20`} value={p.format ?? ""} onChange={(e) => setP(i, { format: e.target.value || undefined })} placeholder="机考/纸笔" />
-            <select className={`${cell} w-24`} value={p.source ?? ""} onChange={(e) => setP(i, { source: e.target.value || undefined })} title="依据">
+            <select className={`${cell} w-36`} value={p.source ?? ""} onChange={(e) => setP(i, { source: e.target.value || undefined })} title="依据">
               <option value="">依据</option>
-              {["官方大纲", "考生回忆", "机构整理", "人工录入"].map((x) => (
+              {["官方大纲", "考生回忆·多人印证", "考生回忆·单一来源", "机构整理", "人工录入"].map((x) => (
                 <option key={x}>{x}</option>
               ))}
             </select>

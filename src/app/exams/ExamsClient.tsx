@@ -118,7 +118,7 @@ export default function ExamsClient() {
   async function runResearch(name = q, keepProduct = "") {
     if (!name.trim()) return;
     setBusy(true);
-    setStatus("🔍 正在联网搜索公告、时间节点，同时搜往年题型题量（全网搜大纲、真题回忆、经验帖、机构文章），大约 40–90 秒…");
+    setStatus("🔍 正在联网搜索公告、时间节点，同时搜往年题型题量（全网搜大纲、真题回忆、经验帖、机构文章，以及小红书考生回忆），大约 1–3 分钟…");
     const r = await fetch("/api/exams/research", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
     const j = await r.json();
     setBusy(false);
@@ -128,7 +128,9 @@ export default function ExamsClient() {
     setInfo(res.info);
     setResearched(true);
     setDrawer({ mode: "preview" });
-    setStatus(`✅ 整理好了：参考 ${res.searched} 篇网页（${res.fetched} 篇读了公告全文），可信度「${res.info.confidence || "未知"}」，在右侧检查后保存。`);
+    setStatus(
+      `✅ 整理好了：参考 ${res.searched} 篇资料（${res.fetched} 篇读了全文${res.xhsRead ? `，含 ${res.xhsRead} 篇小红书考生帖` : ""}），可信度「${res.info.confidence || "未知"}」，在右侧检查后保存。`
+    );
   }
 
   async function save() {
@@ -151,7 +153,7 @@ export default function ExamsClient() {
   /** 只补搜题型题量，合并进现有考情后给人确认 */
   async function fetchPapers(x: Exam) {
     setBusy(true);
-    setStatus("🧮 正在搜往年题型题量：全网搜官方大纲、真题回忆、笔经经验帖、机构文章，大约 30–60 秒…");
+    setStatus("🧮 正在搜往年题型题量：全网搜官方大纲、真题回忆、笔经经验帖、机构文章，同时用 OpenCLI 搜小红书考生回忆，大约 1–3 分钟…");
     const r = await fetch("/api/exams/research", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: x.name, only: "papers" }) });
     const j = await r.json();
     setBusy(false);
@@ -170,7 +172,9 @@ export default function ExamsClient() {
     setInfo(merged);
     setResearched(false);
     setDrawer({ mode: "preview" });
-    setStatus(`✅ 找到 ${res.papers.length} 个科目的题型题量（参考 ${res.searched} 篇，读了 ${res.fetched} 篇全文），检查后保存。`);
+    setStatus(
+      `✅ 找到 ${res.papers.length} 个科目的题型题量（参考 ${res.searched} 篇，读了 ${res.fetched} 篇全文${res.xhs?.read ? `，含 ${res.xhs.read} 篇小红书考生帖` : ""}），检查后保存。${res.xhs?.error ? `小红书没搜成：${res.xhs.error}` : ""}`
+    );
   }
 
   /** 粘贴经验帖 / 大纲 / 链接 → AI 合并进现有考情 → 给人确认 */

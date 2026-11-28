@@ -28,6 +28,9 @@ export interface Settings {
   updateToken: string; // 私有仓库需要的 GitHub token
   radarRepo: string; // 销量雷达：手机上传数据的 GitHub 仓库，格式 用户名/仓库名
   radarToken: string; // 销量雷达：能读这个仓库的 GitHub 令牌
+  xhsSearch: boolean; // 搜考情时用本机 OpenCLI 搜小红书真实考生回忆
+  opencliProfile: string; // OpenCLI 的浏览器 profile（连了多个 Chrome 时才要填）
+  opencliPath: string; // opencli 程序位置（自动找不到时才要填）
 }
 
 const DEFAULTS: Settings = {
@@ -44,6 +47,9 @@ const DEFAULTS: Settings = {
   updateToken: "",
   radarRepo: "guofoson-stack/xhs-radar",
   radarToken: "",
+  xhsSearch: true,
+  opencliProfile: "",
+  opencliPath: "",
 };
 
 /** 每次调用都重新读文件：在设置页改完立即生效，不用重启 */
@@ -67,6 +73,9 @@ export function readSettings(): Settings {
     updateToken: saved.updateToken ?? "",
     radarRepo: saved.radarRepo || DEFAULTS.radarRepo,
     radarToken: saved.radarToken ?? "",
+    xhsSearch: saved.xhsSearch ?? DEFAULTS.xhsSearch,
+    opencliProfile: saved.opencliProfile ?? "",
+    opencliPath: saved.opencliPath ?? "",
   };
 }
 
