@@ -205,7 +205,6 @@ function paperSignal(r: SearchResult) {
   if (/题量|题型/.test(text)) n += 2;
   if (/分钟|满分|每题\s*[\d.]+\s*分/.test(text)) n += 1.5;
   if (/真题回忆|考情回顾|笔经|面经|考后|考了什么/.test(text)) n += 1.5;
-  if (/zhihu|nowcoder|bilibili|tieba|offershow|yingjiesheng/.test(r.url)) n += 1;
   if (r.date) {
     const age = (Date.now() - Date.parse(r.date)) / DAY;
     n += age < 400 ? 1.5 : age < 800 ? 0.5 : -1.5; // 太老的卷面结构可能变了
@@ -223,20 +222,24 @@ export interface PaperResult {
 }
 
 /**
- * 题型题量专项：官方大纲 + 往年真题回忆 + 知乎 / 牛客 / B 站经验帖 + 机构整理，5 个角度搜，
- * 挑「题量信号」最强的 3 篇抓全文，再让模型按科目整理成卷面结构。约 5 次搜索 + 3 次抓取 + 1 次模型调用。
+ * 题型题量专项：全网搜，不限平台。7 个角度（题型题量、分值、真题回忆、笔经经验帖、考试大纲、往年、试卷结构），
+ * 按「题量信号」排序，同一个网站最多取 2 篇、抓全文的 4 篇来自不同网站，避免被一家机构的说法带偏，
+ * 再让模型按科目整理成卷面结构。约 7 次搜索 + 4 次抓取 + 1 次模型调用。
  */
 export async function researchPapers(name: string): Promise<PaperResult> {
   const q = name.trim();
   const core = examCore(q);
+  const year = Number(q.match(/20\d{2}/)?.[0] ?? new Date().getFullYear());
   const queries = [
     `${q} 笔试 题型 题量`,
     `${core} 笔试题型 题量 分值`,
-    `${core} 笔试真题回忆 考了什么`,
-    `${core} 笔试经验 知乎 牛客`,
-    `${core} 考试大纲 题型 分值 考试时长`,
+    `${core} 笔试真题回忆 考后`,
+    `${core} 笔经 经验贴 考了多少道题`,
+    `${core} 考试大纲 题型 考试时长`,
+    `${year - 1} ${core} 笔试 题型题量`,
+    `${core} 试卷结构 各部分题量`,
   ];
-  const settled = await Promise.allSettled(queries.map((query) => webSearch(query, { count: 8, needContent: true, question: `${core} 笔试考几道题、什么题型` })));
+  const settled = await Promise.allSettled(queries.map((query) => webSearch(query, { count: 10, needContent: true, question: `${core} 笔试考几道题、什么题型` })));
   const all = settled.flatMap((s) => (s.status === "fulfilled" ? s.value : []));
   if (!all.length) {
     const err = settled.find((s) => s.status === "rejected") as PromiseRejectedResult | undefined;
@@ -250,8 +253,23 @@ export async function researchPapers(name: string): Promise<PaperResult> {
     .sort((a, b) => b.s - a.s)
     .map((x) => x.r);
 
-  // 信号最强的 3 篇抓全文（搜索给的正文常常截断，题型表在后半段）
-  const top = ranked.slice(0, 3);
+  // 来源要分散：同一个网站最多留 2 篇；抓全文的 4 篇来自 4 个不同网站
+  const host = (u: string) => {
+    try {
+      return new URL(u).hostname.replace(/^(www|m|wap)\./, "");
+    } catch {
+      return u;
+    }
+  };
+  const perHost = new Map<string, number>();
+  const diverse = ranked.filter((r) => {
+    const h = host(r.url);
+    const n = perHost.get(h) ?? 0;
+    perHost.set(h, n + 1);
+    return n < 2;
+  });
+  const topHosts = new Set<string>();
+  const top = diverse.filter((r) => !topHosts.has(host(r.url)) && topHosts.add(host(r.url))).slice(0, 4);
   const fulltext = new Map<string, string>();
   await Promise.all(
     top.map(async (r) => {
@@ -261,11 +279,11 @@ export async function researchPapers(name: string): Promise<PaperResult> {
       } catch {}
     })
   );
-  const ordered = ranked.slice(0, 12);
+  const ordered = [...top, ...diverse.filter((r) => !top.includes(r))].slice(0, 15);
   const materials = ordered
     .map((r, i) => {
       const full = fulltext.get(r.url) ?? r.content;
-      const body = i < 3 ? (full || r.summary).slice(0, 8000) : r.content ? r.content.slice(0, 2500) : r.summary || r.snippet;
+      const body = i < top.length ? (full || r.summary).slice(0, 7000) : r.content ? r.content.slice(0, 2000) : r.summary || r.snippet;
       return `【资料${i + 1}】${r.title}\n来源：${r.site_name ?? ""} ${r.url}\n发布日期：${r.date ? r.date.slice(0, 10) : "未知"}\n${body}`;
     })
     .join("\n\n");

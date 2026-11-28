@@ -118,7 +118,7 @@ export default function ExamsClient() {
   async function runResearch(name = q, keepProduct = "") {
     if (!name.trim()) return;
     setBusy(true);
-    setStatus("🔍 正在联网搜索公告、时间节点，同时搜往年题型题量（大纲、真题回忆、知乎牛客经验帖），大约 40–90 秒…");
+    setStatus("🔍 正在联网搜索公告、时间节点，同时搜往年题型题量（全网搜大纲、真题回忆、经验帖、机构文章），大约 40–90 秒…");
     const r = await fetch("/api/exams/research", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
     const j = await r.json();
     setBusy(false);
@@ -151,7 +151,7 @@ export default function ExamsClient() {
   /** 只补搜题型题量，合并进现有考情后给人确认 */
   async function fetchPapers(x: Exam) {
     setBusy(true);
-    setStatus("🧮 正在搜往年题型题量：官方大纲、真题回忆、知乎 / 牛客 / B 站经验帖、机构整理，大约 30–60 秒…");
+    setStatus("🧮 正在搜往年题型题量：全网搜官方大纲、真题回忆、笔经经验帖、机构文章，大约 30–60 秒…");
     const r = await fetch("/api/exams/research", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: x.name, only: "papers" }) });
     const j = await r.json();
     setBusy(false);
@@ -299,7 +299,7 @@ export default function ExamsClient() {
               <button className="btn" onClick={runBatch} disabled={batchRunning || !batchText.trim()}>
                 {batchRunning ? `搜索中 ${batchLog.filter((l) => l.state === "完成" || l.state === "失败").length}/${batchLog.length}` : "开始批量搜索"}
               </button>
-              <span className="text-xs text-muted">每个考试约 9 次搜索 + 5 次抓网页，大约 1 毛钱</span>
+              <span className="text-xs text-muted">每个考试约 11 次搜索 + 6 次读网页，大约 1 毛钱</span>
             </div>
             {batchLog.length > 0 && (
               <ul className="space-y-0.5 text-sm">
@@ -478,7 +478,7 @@ export default function ExamsClient() {
                   {suppOpen && (
                     <div className="space-y-2 rounded-lg border border-line p-3">
                       <div className="text-xs text-muted">
-                        把经验帖、真题回忆、考试大纲、公告片段的<b>正文</b>贴进来（小红书的帖子复制正文；知乎、牛客、公众号也可以直接贴链接），AI 会把新信息合并进现有考情，你确认后再保存。
+                        把经验帖、真题回忆、考试大纲、公告片段的<b>正文</b>贴进来（小红书的帖子要复制正文；其他网站的文章也可以直接贴链接），AI 会把新信息合并进现有考情，你确认后再保存。
                       </div>
                       <textarea className="input h-40" value={suppText} onChange={(e) => setSuppText(e.target.value)} placeholder="例：2025 年考的，综合知识 120 分钟，判断 40 道每道 0.6，单选 55 道……" />
                       <button className="btn" onClick={() => runSupplement(current.x)} disabled={busy || !suppText.trim()}>
