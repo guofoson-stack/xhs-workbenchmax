@@ -29,6 +29,8 @@ async function readPrompt(name: string) {
 export const decomposeSystem = () => readPrompt("拆解提示词.md");
 export const generateSystem = () => readPrompt("生成提示词.md");
 export const researchSystem = () => readPrompt("考情研究提示词.md");
+export const paperSystem = () => readPrompt("题型题量提示词.md");
+export const supplementSystem = () => readPrompt("考情补充提示词.md");
 
 export function decomposeUser(input: {
   title: string;

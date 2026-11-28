@@ -7,6 +7,8 @@ import {
   statusOf,
   type ExamInfo,
   type FactRow,
+  type PaperPart,
+  type PaperRow,
   type Status,
   type SubjectRow,
   type TimelineRow,
@@ -80,6 +82,8 @@ export function ExamInfoView({ info, compact = false }: { info: ExamInfo; compac
         </div>
       )}
 
+      <PapersView papers={info.papers ?? []} />
+
       {info.facts.length > 0 && (
         <div>
           <div className="mb-1 text-xs font-bold text-muted">📌 关键信息</div>
@@ -132,6 +136,50 @@ export function ExamInfoView({ info, compact = false }: { info: ExamInfo; compac
           </ul>
         </details>
       )}
+    </div>
+  );
+}
+
+const SOURCE_STYLE: Record<string, string> = {
+  官方大纲: "bg-green-50 text-green-700",
+  考生回忆: "bg-blue-50 text-blue-700",
+  机构整理: "bg-amber-50 text-amber-700",
+};
+
+/** 题型题量：每个科目一张小表 */
+export function PapersView({ papers, empty }: { papers: PaperRow[]; empty?: React.ReactNode }) {
+  if (!papers.length) return empty ? <div>{empty}</div> : null;
+  return (
+    <div>
+      <div className="mb-1 text-xs font-bold text-muted">🧮 题型题量</div>
+      <div className="space-y-2">
+        {papers.map((p, i) => (
+          <div key={i} className={`overflow-hidden rounded-lg border border-line ${isCurrent(p.basis) ? "" : "opacity-80"}`}>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 bg-paper px-3 py-1.5">
+              <b>{p.subject}</b>
+              <span className="text-xs text-muted">{[p.duration, p.total && `满分 ${p.total.replace(/^满分/, "")}`, p.format].filter(Boolean).join(" · ")}</span>
+              <span className="ml-auto flex gap-1">
+                {p.source && <span className={`rounded px-1.5 py-0.5 text-[11px] ${SOURCE_STYLE[p.source] ?? "bg-gray-100 text-gray-500"}`}>{p.source}</span>}
+                <Basis basis={p.basis} />
+              </span>
+            </div>
+            {p.parts.length > 0 && (
+              <table className="w-full text-sm">
+                <tbody>
+                  {p.parts.map((x, j) => (
+                    <tr key={j} className="border-t border-line">
+                      <td className="w-28 px-3 py-1 font-medium">{x.type}</td>
+                      <td className="w-20 px-2 py-1">{x.count ? (/\d$/.test(x.count) ? `${x.count} 题` : x.count) : <span className="text-muted">-</span>}</td>
+                      <td className="w-28 px-2 py-1 text-muted">{x.score}</td>
+                      <td className="px-2 py-1 text-muted">{x.note}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -231,6 +279,8 @@ export function ExamInfoEditor({ info, onChange }: { info: ExamInfo; onChange: (
         )}
       />
 
+      <PapersEditor papers={info.papers ?? []} onChange={(papers) => set({ papers })} />
+
       <Rows<FactRow>
         title="📌 关键信息"
         rows={info.facts}
@@ -256,6 +306,66 @@ export function ExamInfoEditor({ info, onChange }: { info: ExamInfo; onChange: (
           {info.warnings && <div className="mt-0.5">⚠️ 需要核实：{info.warnings}</div>}
         </div>
       )}
+    </div>
+  );
+}
+
+function PapersEditor({ papers, onChange }: { papers: PaperRow[]; onChange: (p: PaperRow[]) => void }) {
+  const setP = (i: number, patch: Partial<PaperRow>) => onChange(papers.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-muted">
+          🧮 题型题量<span className="ml-1 font-normal">（一个科目一块；题量写数字就行，不确定写「约20」）</span>
+        </span>
+        <button
+          type="button"
+          className="text-xs text-brand"
+          onClick={() => onChange([...papers, { subject: "", parts: [{ type: "单选题" }], basis: "本届", source: "人工录入" }])}
+        >
+          ＋ 加一个科目
+        </button>
+      </div>
+      {papers.map((p, i) => (
+        <div key={i} className="space-y-1.5 rounded-lg border border-line p-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <input className={`${cell} w-32 font-bold`} value={p.subject} onChange={(e) => setP(i, { subject: e.target.value })} placeholder="科目" />
+            <input className={`${cell} w-24`} value={p.duration ?? ""} onChange={(e) => setP(i, { duration: e.target.value || undefined })} placeholder="时长" />
+            <input className={`${cell} w-20`} value={p.total ?? ""} onChange={(e) => setP(i, { total: e.target.value || undefined })} placeholder="满分" />
+            <input className={`${cell} w-20`} value={p.format ?? ""} onChange={(e) => setP(i, { format: e.target.value || undefined })} placeholder="机考/纸笔" />
+            <select className={`${cell} w-24`} value={p.source ?? ""} onChange={(e) => setP(i, { source: e.target.value || undefined })} title="依据">
+              <option value="">依据</option>
+              {["官方大纲", "考生回忆", "机构整理", "人工录入"].map((x) => (
+                <option key={x}>{x}</option>
+              ))}
+            </select>
+            <BasisInput value={p.basis} onChange={(basis) => setP(i, { basis })} />
+            <button type="button" className="ml-auto text-xs text-muted hover:text-brand" onClick={() => onChange(papers.filter((_, j) => j !== i))}>
+              删除科目
+            </button>
+          </div>
+          <Rows<PaperPart>
+            title="题型"
+            rows={p.parts}
+            onChange={(parts) => setP(i, { parts })}
+            blank={{ type: "" }}
+            render={(r, s) => (
+              <>
+                <input className={`${cell} w-24`} list="part-types" value={r.type} onChange={(e) => s({ type: e.target.value })} placeholder="题型" />
+                <input className={`${cell} w-16`} value={r.count ?? ""} onChange={(e) => s({ count: e.target.value || undefined })} placeholder="题量" />
+                <input className={`${cell} w-24`} value={r.score ?? ""} onChange={(e) => s({ score: e.target.value || undefined })} placeholder="分值" />
+                <input className={`${cell} min-w-32 flex-1`} value={r.note ?? ""} onChange={(e) => s({ note: e.target.value || undefined })} placeholder="考什么" />
+              </>
+            )}
+          />
+        </div>
+      ))}
+      <datalist id="part-types">
+        {["单选题", "多选题", "判断题", "不定项选择", "填空题", "简答题", "案例分析", "材料分析", "公文写作", "申论", "作文", "计算题"].map((x) => (
+          <option key={x} value={x} />
+        ))}
+      </datalist>
+      {!papers.length && <div className="text-xs text-muted">（空）</div>}
     </div>
   );
 }

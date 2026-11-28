@@ -37,7 +37,7 @@ export default function ExamsClient() {
   // 筛选
   const [kw, setKw] = useState("");
   const [cat, setCat] = useState("");
-  const [phase, setPhase] = useState<Phase | "" | "stale">("");
+  const [phase, setPhase] = useState<Phase | "" | "stale" | "noPaper">("");
   const [showDone, setShowDone] = useState(false);
   const [sort, setSort] = useState<"next" | "updated" | "name">("next");
   // AI 搜索
@@ -50,6 +50,13 @@ export default function ExamsClient() {
   const [info, setInfo] = useState<ExamInfo>(emptyInfo());
   const [researched, setResearched] = useState(false);
   const [msg, setMsg] = useState("");
+  // 粘贴资料补充 / 批量搜索
+  const [suppOpen, setSuppOpen] = useState(false);
+  const [suppText, setSuppText] = useState("");
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [batchText, setBatchText] = useState("");
+  const [batchLog, setBatchLog] = useState<{ name: string; state: "等待" | "搜索中" | "完成" | "失败"; msg?: string }[]>([]);
+  const batchRunning = batchLog.some((l) => l.state === "搜索中" || l.state === "等待");
 
   const load = () =>
     fetch("/api/exams")
@@ -69,16 +76,17 @@ export default function ExamsClient() {
         const xi = infoOf(x);
         const p = progressOf(xi, today);
         const updated = x.researched_at || x.updated_at || null;
-        return { x, info: xi, p, updated, stale: daysSince(updated as string) > STALE_DAYS };
+        return { x, info: xi, p, updated, stale: daysSince(updated as string) > STALE_DAYS, noPaper: !xi.papers?.length };
       }),
     [items, today]
   );
 
   const counts = useMemo(() => {
-    const c: Record<string, number> = { stale: 0 };
+    const c: Record<string, number> = { stale: 0, noPaper: 0 };
     for (const r of rows) {
       c[r.p.phase] = (c[r.p.phase] ?? 0) + 1;
       if (r.stale && r.p.phase !== "已结束") c.stale++;
+      if (r.noPaper && r.p.phase !== "已结束") c.noPaper++;
     }
     return c;
   }, [rows]);
@@ -89,6 +97,7 @@ export default function ExamsClient() {
       if (k && !`${r.x.name} ${r.x.short_name ?? ""}`.toLowerCase().includes(k)) return false;
       if (cat && r.x.category !== cat) return false;
       if (phase === "stale") return r.stale && r.p.phase !== "已结束";
+      if (phase === "noPaper") return r.noPaper && r.p.phase !== "已结束";
       if (phase) return r.p.phase === phase;
       if (!showDone && r.p.phase === "已结束") return false;
       return true;
@@ -109,7 +118,7 @@ export default function ExamsClient() {
   async function runResearch(name = q, keepProduct = "") {
     if (!name.trim()) return;
     setBusy(true);
-    setStatus("🔍 正在联网搜索公告、大纲、时间节点，并读取公告全文，大约 30–60 秒…");
+    setStatus("🔍 正在联网搜索公告、时间节点，同时搜往年题型题量（大纲、真题回忆、知乎牛客经验帖），大约 40–90 秒…");
     const r = await fetch("/api/exams/research", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
     const j = await r.json();
     setBusy(false);
@@ -137,6 +146,88 @@ export default function ExamsClient() {
     setQ("");
     setResearched(false);
     setDrawer(j.item?.id ? { mode: "view", id: j.item.id } : null);
+  }
+
+  /** 只补搜题型题量，合并进现有考情后给人确认 */
+  async function fetchPapers(x: Exam) {
+    setBusy(true);
+    setStatus("🧮 正在搜往年题型题量：官方大纲、真题回忆、知乎 / 牛客 / B 站经验帖、机构整理，大约 30–60 秒…");
+    const r = await fetch("/api/exams/research", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: x.name, only: "papers" }) });
+    const j = await r.json();
+    setBusy(false);
+    if (!r.ok) return setStatus("❌ " + (j.error ?? "搜索失败"));
+    const res = j.papers;
+    const cur = infoOf(x);
+    if (!res.papers.length) return setStatus(`😶 搜了 ${res.searched} 篇网页，没找到靠谱的题型题量。${res.warnings ? res.warnings + "。" : ""}可以把经验帖正文用「📋 粘贴资料补充」贴进来。`);
+    const merged: ExamInfo = {
+      ...cur,
+      papers: res.papers,
+      missing: cur.missing.filter((m) => !/题型|题量/.test(m)),
+      warnings: [cur.warnings, res.warnings].filter(Boolean).join("；") || undefined,
+      sources: [...(cur.sources ?? []), ...res.sources.filter((s: { url: string }) => !cur.sources?.some((c) => c.url === s.url))],
+    };
+    setBase({ name: x.name, short_name: x.short_name ?? "", category: x.category, product: x.product ?? "" });
+    setInfo(merged);
+    setResearched(false);
+    setDrawer({ mode: "preview" });
+    setStatus(`✅ 找到 ${res.papers.length} 个科目的题型题量（参考 ${res.searched} 篇，读了 ${res.fetched} 篇全文），检查后保存。`);
+  }
+
+  /** 粘贴经验帖 / 大纲 / 链接 → AI 合并进现有考情 → 给人确认 */
+  async function runSupplement(x: Exam) {
+    setBusy(true);
+    setStatus("📋 正在读你贴的资料并合并进考情…");
+    const r = await fetch("/api/exams/supplement", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: x.name, info: infoOf(x), text: suppText }),
+    });
+    const j = await r.json();
+    setBusy(false);
+    if (!r.ok) return setStatus("❌ " + (j.error ?? "整理失败"));
+    setBase({ name: x.name, short_name: x.short_name ?? "", category: x.category, product: x.product ?? "" });
+    setInfo(j.info);
+    setResearched(false);
+    setSuppOpen(false);
+    setSuppText("");
+    setDrawer({ mode: "preview" });
+    setStatus(`✅ 合并好了${j.fetched ? `（读了 ${j.fetched} 个链接）` : ""}${j.failed?.length ? `，没抓到：${j.failed.join("、")}` : ""}。检查后保存。`);
+  }
+
+  /** 批量搜索：一行一个考试，挨个搜索并直接保存（可信度和来源都会记下，之后可以抽查） */
+  async function runBatch() {
+    const names = [...new Set(batchText.split("\n").map((t) => t.trim()).filter(Boolean))].slice(0, 30);
+    if (!names.length) return;
+    const log = names.map((name) => ({ name, state: "等待" as const }));
+    setBatchLog(log);
+    const update = (i: number, patch: Partial<(typeof batchLog)[number]>) => setBatchLog((l) => l.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+    for (let i = 0; i < names.length; i++) {
+      update(i, { state: "搜索中" });
+      try {
+        const r = await fetch("/api/exams/research", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: names[i] }) });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error ?? "搜索失败");
+        const res = j.result;
+        const s = await fetch("/api/exams", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: res.name,
+            short_name: res.short_name,
+            category: CATEGORIES.includes(res.category) ? res.category : "其他",
+            product: "",
+            info: res.info,
+            sources: res.info.sources ?? [],
+            researched: true,
+          }),
+        });
+        if (!s.ok) throw new Error((await s.json()).error ?? "保存失败");
+        update(i, { state: "完成", msg: `${res.name} · 可信度${res.info.confidence || "未知"} · ${res.info.papers?.length ? `题型 ${res.info.papers.length} 科` : "没找到题型"}` });
+        load();
+      } catch (e) {
+        update(i, { state: "失败", msg: (e as Error).message });
+      }
+    }
   }
 
   function openEdit(x?: Exam) {
@@ -184,11 +275,44 @@ export default function ExamsClient() {
               {busy ? "搜索中…" : "搜索整理"}
             </button>
           </div>
+          <button className="btn-ghost" onClick={() => setBatchOpen(!batchOpen)}>
+            📚 批量搜索
+          </button>
           <button className="btn-ghost" onClick={() => openEdit()}>
             ＋ 手动录入
           </button>
         </div>
         {status && <div className="text-xs text-muted">{status}</div>}
+        {batchOpen && (
+          <div className="space-y-2 rounded-lg border border-line p-3">
+            <div className="text-xs text-muted">
+              一行一个考试名，一次最多 30 个。会挨个联网搜索（每个约 1 分钟）并直接保存，搜完在列表里点开抽查。搜索期间别关这个页面。
+            </div>
+            <textarea
+              className="input h-28"
+              value={batchText}
+              onChange={(e) => setBatchText(e.target.value)}
+              placeholder={"中国南方电网2027年校园招聘\n国家电网2027年第一批高校毕业生招聘\n四川省2026年下半年事业单位公开招聘"}
+              disabled={batchRunning}
+            />
+            <div className="flex items-center gap-2">
+              <button className="btn" onClick={runBatch} disabled={batchRunning || !batchText.trim()}>
+                {batchRunning ? `搜索中 ${batchLog.filter((l) => l.state === "完成" || l.state === "失败").length}/${batchLog.length}` : "开始批量搜索"}
+              </button>
+              <span className="text-xs text-muted">每个考试约 9 次搜索 + 5 次抓网页，大约 1 毛钱</span>
+            </div>
+            {batchLog.length > 0 && (
+              <ul className="space-y-0.5 text-sm">
+                {batchLog.map((l, i) => (
+                  <li key={i}>
+                    {l.state === "完成" ? "✅" : l.state === "失败" ? "❌" : l.state === "搜索中" ? "⏳" : "·"} {l.name}
+                    {l.msg && <span className="ml-2 text-xs text-muted">{l.msg}</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         {/* 统计：点一下直接筛 */}
         <div className="flex flex-wrap gap-2 text-sm">
@@ -211,6 +335,9 @@ export default function ExamsClient() {
           ))}
           <button onClick={() => setPhase(phase === "stale" ? "" : "stale")} className={`rounded-full bg-white px-3 py-1 ring-1 ring-line ${phase === "stale" ? "ring-2 ring-brand" : ""}`}>
             超过 {STALE_DAYS} 天没更新 <b>{counts.stale}</b>
+          </button>
+          <button onClick={() => setPhase(phase === "noPaper" ? "" : "noPaper")} className={`rounded-full bg-white px-3 py-1 ring-1 ring-line ${phase === "noPaper" ? "ring-2 ring-brand" : ""}`}>
+            缺题型题量 <b>{counts.noPaper}</b>
           </button>
         </div>
       </div>
@@ -267,6 +394,7 @@ export default function ExamsClient() {
                 {x.category}
                 {xi.cycle ? ` · ${xi.cycle}` : ""}
                 {xi.confidence ? ` · 可信度${xi.confidence}` : ""}
+                {xi.papers?.length ? "" : <span className="text-amber-700"> · 缺题型题量</span>}
               </span>
             </span>
             <span>
@@ -338,6 +466,26 @@ export default function ExamsClient() {
                     </div>
                   </div>
                   {busy && <div className="text-xs text-muted">{status}</div>}
+                  {!busy && status && !current.info.papers?.length && <div className="text-xs text-muted">{status}</div>}
+                  <div className="flex flex-wrap gap-2">
+                    <button className="btn-ghost text-sm" onClick={() => fetchPapers(current.x)} disabled={busy}>
+                      🧮 {current.info.papers?.length ? "重新搜题型题量" : "搜题型题量"}
+                    </button>
+                    <button className="btn-ghost text-sm" onClick={() => setSuppOpen(!suppOpen)} disabled={busy}>
+                      📋 粘贴资料补充
+                    </button>
+                  </div>
+                  {suppOpen && (
+                    <div className="space-y-2 rounded-lg border border-line p-3">
+                      <div className="text-xs text-muted">
+                        把经验帖、真题回忆、考试大纲、公告片段的<b>正文</b>贴进来（小红书的帖子复制正文；知乎、牛客、公众号也可以直接贴链接），AI 会把新信息合并进现有考情，你确认后再保存。
+                      </div>
+                      <textarea className="input h-40" value={suppText} onChange={(e) => setSuppText(e.target.value)} placeholder="例：2025 年考的，综合知识 120 分钟，判断 40 道每道 0.6，单选 55 道……" />
+                      <button className="btn" onClick={() => runSupplement(current.x)} disabled={busy || !suppText.trim()}>
+                        {busy ? "整理中…" : "合并进考情"}
+                      </button>
+                    </div>
+                  )}
                   <ExamInfoView info={current.info} />
                   {current.x.product && (
                     <div className="text-sm">

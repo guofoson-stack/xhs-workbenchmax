@@ -18,6 +18,24 @@ export interface SubjectRow {
   basis: string;
 }
 
+/** 一个科目的题型题量：卷面结构 */
+export interface PaperPart {
+  type: string; // 题型：单选题 / 多选题 / 判断题 / 案例分析 / 申论 …
+  count?: string; // 题量：「40」「约20」「35-40」
+  score?: string; // 分值：「每题1分」「共40分」
+  note?: string; // 补充：考什么模块
+}
+
+export interface PaperRow {
+  subject: string; // 科目
+  duration?: string; // 时长：120分钟
+  total?: string; // 满分：100分
+  format?: string; // 机考 / 纸笔
+  parts: PaperPart[];
+  basis: string; // 本届 / 往年·2026年度
+  source?: string; // 依据类型：官方大纲 / 考生回忆 / 机构整理 / 人工录入
+}
+
 export interface FactRow {
   label: string;
   value: string;
@@ -29,6 +47,7 @@ export interface ExamInfo {
   stageHint?: string; // AI 写的阶段说明（时间线没有日期时才用）
   timeline: TimelineRow[];
   subjects: SubjectRow[];
+  papers?: PaperRow[]; // 题型题量（卷面结构）
   facts: FactRow[];
   tips: string[];
   missing: string[];
@@ -112,6 +131,10 @@ export function examInfoToText(name: string, info: ExamInfo) {
     lines.push("笔试科目：");
     for (const s of info.subjects) lines.push(`- ${s.name}${s.detail ? `：${s.detail}` : ""}${isCurrent(s.basis) ? "" : `〔${s.basis}〕`}`);
   }
+  if (info.papers?.length) {
+    lines.push("题型题量：");
+    for (const p of info.papers) lines.push(`- ${paperToLine(p)}`);
+  }
   if (info.facts.length) {
     lines.push("关键信息：");
     for (const f of info.facts) lines.push(`- ${f.label}：${f.value}${isCurrent(f.basis) ? "" : `〔${f.basis}〕`}`);
@@ -125,7 +148,17 @@ export function examInfoToText(name: string, info: ExamInfo) {
 }
 
 export function emptyInfo(): ExamInfo {
-  return { cycle: "", timeline: [], subjects: [], facts: [], tips: [], missing: [] };
+  return { cycle: "", timeline: [], subjects: [], papers: [], facts: [], tips: [], missing: [] };
+}
+
+/** 「综合知识（120分钟/满分150）：判断题40题·每题0.6分；单选题55题…〔往年·考生回忆〕」 */
+export function paperToLine(p: PaperRow) {
+  const head = [p.duration, p.total && `满分${p.total.replace(/^满分/, "")}`, p.format].filter(Boolean).join("/");
+  const parts = p.parts
+    .map((x) => `${x.type}${x.count ? ` ${/\d$/.test(x.count) ? x.count + "题" : x.count}` : ""}${x.score ? `（${x.score}）` : ""}${x.note ? `：${x.note}` : ""}`)
+    .join("；");
+  const tag = [isCurrent(p.basis) ? "" : p.basis, p.source].filter(Boolean).join("·");
+  return `${p.subject}${head ? `（${head}）` : ""}：${parts || "题型待补"}${tag ? `〔${tag}〕` : ""}`;
 }
 
 export function parseInfo(v: unknown): ExamInfo | null {
@@ -137,6 +170,7 @@ export function parseInfo(v: unknown): ExamInfo | null {
       ...o,
       timeline: o.timeline ?? [],
       subjects: o.subjects ?? [],
+      papers: o.papers ?? [],
       facts: o.facts ?? [],
       tips: o.tips ?? [],
       missing: o.missing ?? [],
